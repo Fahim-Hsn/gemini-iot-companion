@@ -160,8 +160,8 @@ void voiceTaskFunc(void* parameter) {
         
         bool ttsOk = ttsClient.speakText(aiResp.speechText, aiResp.languageCode);
         if (!ttsOk) {
-            log_w("TTS direct synthesis failed, falling back to chime.");
-            speakerDriver.playSuccessChime();
+            log_i("Playing cute offline mascot syllable voice for response...");
+            speakerDriver.speakMascotVoice(aiResp.speechText);
         }
 
         // Finished turn
@@ -234,6 +234,7 @@ void setup() {
 
     // 5. Initialize Audio & AI Drivers
     speakerDriver.begin(SPK_SAMPLE_RATE);
+    speakerDriver.playStartupSound();
     contextManager.begin();
     geminiClient.begin();
     ttsClient.begin();

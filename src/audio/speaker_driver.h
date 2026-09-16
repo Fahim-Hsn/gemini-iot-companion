@@ -19,10 +19,14 @@ public:
     size_t writeChunk(const int16_t* samples, size_t sampleCount);
 
     // Play synthesized acoustic cues
+    void playStartupSound();
     void playWakeChime();
     void playReadyBeep();
     void playSuccessChime();
     void playErrorTone();
+
+    // Cute Mascot Syllable Voice Synthesizer (Zero-latency offline Animal Crossing style)
+    void speakMascotVoice(const String& text);
 
     // Volume configuration (0 to 100)
     void setVolume(uint8_t volumePercent);
@@ -42,7 +46,7 @@ private:
     volatile bool _isPlaying;
     volatile float _currentMouthLevel;
 
-    void playTone(float frequency, uint32_t durationMs, float volume = 0.5f);
+    void playTone(float frequency, uint32_t durationMs, float volume = 0.8f);
 };
 
 extern SpeakerDriver speakerDriver;
