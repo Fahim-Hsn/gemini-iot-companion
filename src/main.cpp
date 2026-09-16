@@ -158,11 +158,8 @@ void voiceTaskFunc(void* parameter) {
         currentSystemState = SystemState::SPEAKING_RESPONSE;
         uiManager.setSystemStatusText("Speaking...");
         
-        bool ttsOk = ttsClient.speakText(aiResp.speechText, aiResp.languageCode);
-        if (!ttsOk) {
-            log_i("Playing cute offline mascot syllable voice for response...");
-            speakerDriver.speakMascotVoice(aiResp.speechText);
-        }
+        speakerDriver.begin(SPK_SAMPLE_RATE);
+        speakerDriver.speakMascotVoice(aiResp.speechText);
 
         // Finished turn
         uiManager.setSystemStatusText("Ready");

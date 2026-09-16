@@ -11,9 +11,12 @@ MicDriver::~MicDriver() {
 
 bool MicDriver::begin() {
     if (_isInitialized) {
-        i2s_driver_uninstall(_i2sPort);
-        _isInitialized = false;
+        end();
     }
+
+    gpio_reset_pin((gpio_num_t)PIN_MIC_SCK);
+    gpio_reset_pin((gpio_num_t)PIN_MIC_WS);
+    gpio_reset_pin((gpio_num_t)PIN_MIC_SD);
 
     i2s_config_t i2s_config = {
         .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),

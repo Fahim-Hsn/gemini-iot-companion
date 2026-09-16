@@ -20,6 +20,11 @@ bool SpeakerDriver::begin(uint32_t sampleRate) {
         end();
     }
 
+    // Reset GPIO pads to clean hardware state before I2S assignment
+    gpio_reset_pin((gpio_num_t)PIN_SPK_BCLK);
+    gpio_reset_pin((gpio_num_t)PIN_SPK_LRC);
+    gpio_reset_pin((gpio_num_t)PIN_SPK_DIN);
+
     i2s_config_t i2s_config = {
         .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
         .sample_rate = sampleRate,
@@ -86,7 +91,9 @@ void SpeakerDriver::setVolume(uint8_t volumePercent) {
 void SpeakerDriver::stopPlayback() {
     _isPlaying = false;
     _currentMouthLevel = 0.0f;
-    i2s_zero_dma_buffer(_i2sPort);
+    if (_isInitialized) {
+        i2s_zero_dma_buffer(_i2sPort);
+    }
 }
 
 size_t SpeakerDriver::writeChunk(const int16_t* samples, size_t sampleCount) {
@@ -151,7 +158,7 @@ void SpeakerDriver::playTone(float frequency, uint32_t durationMs, float volume)
 
     float phase = 0.0f;
     float phaseIncrement = (2.0f * M_PI * frequency) / (float)sampleRate;
-    // Boost effective volume for loud and punchy output on MAX98357A
+    // Boost effective volume for loud output on MAX98357A
     float effectiveVol = volume * _volumeScale * 28000.0f;
 
     _isPlaying = true;
@@ -160,7 +167,13 @@ void SpeakerDriver::playTone(float frequency, uint32_t durationMs, float volume)
         size_t n = (i + CHUNK <= totalSamples) ? CHUNK : (totalSamples - i);
         double energyAcc = 0.0;
         for (size_t j = 0; j < n; j++) {
-            int16_t val = (int16_t)(sinf(phase) * effectiveVol);
+            // Smooth attack and decay envelope to eliminate edge clicks
+            float env = 1.0f;
+            size_t sampleIdx = i + j;
+            if (sampleIdx < 120) env = (float)sampleIdx / 120.0f;
+            else if (sampleIdx + 120 > totalSamples) env = (float)(totalSamples - sampleIdx) / 120.0f;
+
+            int16_t val = (int16_t)(sinf(phase) * effectiveVol * env);
             phase += phaseIncrement;
             if (phase > 2.0f * M_PI) phase -= 2.0f * M_PI;
 
@@ -171,7 +184,7 @@ void SpeakerDriver::playTone(float frequency, uint32_t durationMs, float volume)
 
         // Live mouth amplitude tracking
         float rms = (float)sqrt(energyAcc / (double)n);
-        _currentMouthLevel = (rms / 20000.0f);
+        _currentMouthLevel = (rms / 15000.0f);
         if (_currentMouthLevel > 1.0f) _currentMouthLevel = 1.0f;
 
         size_t bytesWritten = 0;
@@ -184,30 +197,30 @@ void SpeakerDriver::playTone(float frequency, uint32_t durationMs, float volume)
 
 void SpeakerDriver::playStartupSound() {
     log_i("Playing Bondhu Startup Chime...");
-    playTone(440.0f, 70, 0.7f); // A4
-    playTone(554.37f, 70, 0.7f); // C#5
-    playTone(659.25f, 70, 0.8f); // E5
-    playTone(880.0f, 150, 0.9f); // A5
+    playTone(440.0f, 80, 0.8f); // A4
+    playTone(554.37f, 80, 0.8f); // C#5
+    playTone(659.25f, 80, 0.9f); // E5
+    playTone(880.0f, 160, 1.0f); // A5
 }
 
 void SpeakerDriver::playWakeChime() {
-    playTone(523.25f, 80, 0.7f); // C5
-    playTone(659.25f, 80, 0.8f); // E5
-    playTone(783.99f, 130, 0.9f); // G5
+    playTone(523.25f, 80, 0.8f); // C5
+    playTone(659.25f, 80, 0.9f); // E5
+    playTone(783.99f, 130, 1.0f); // G5
 }
 
 void SpeakerDriver::playReadyBeep() {
-    playTone(880.0f, 60, 0.7f);  // A5
+    playTone(880.0f, 60, 0.8f);  // A5
 }
 
 void SpeakerDriver::playSuccessChime() {
-    playTone(587.33f, 80, 0.7f); // D5
-    playTone(880.00f, 150, 0.8f); // A5
+    playTone(587.33f, 80, 0.8f); // D5
+    playTone(880.00f, 150, 0.9f); // A5
 }
 
 void SpeakerDriver::playErrorTone() {
-    playTone(392.0f, 100, 0.7f); // G4
-    playTone(329.63f, 180, 0.7f); // E4
+    playTone(392.0f, 100, 0.8f); // G4
+    playTone(329.63f, 180, 0.8f); // E4
 }
 
 void SpeakerDriver::speakMascotVoice(const String& text) {
@@ -216,8 +229,8 @@ void SpeakerDriver::speakMascotVoice(const String& text) {
     log_i("Mascot speaking syllable voice for text (%u chars)...", (unsigned)text.length());
     _isPlaying = true;
 
-    // Pitch lookup table for cute chirpy syllables
-    static const float baseNotes[] = {
+    // Harmonic melody notes for cute speech cadence
+    static const float voicePitches[] = {
         523.25f, // C5
         587.33f, // D5
         659.25f, // E5
@@ -229,28 +242,26 @@ void SpeakerDriver::speakMascotVoice(const String& text) {
     };
 
     size_t charCount = text.length();
-    // Limit speech length for responsive animation
-    if (charCount > 120) charCount = 120;
+    if (charCount > 100) charCount = 100;
 
     for (size_t i = 0; i < charCount && _isPlaying; i++) {
         char c = text[i];
         if (c == ' ' || c == '\n' || c == '\t') {
-            vTaskDelay(pdMS_TO_TICKS(40));
+            vTaskDelay(pdMS_TO_TICKS(35));
             continue;
         }
         if (c == '.' || c == '!' || c == '?' || c == ',') {
-            vTaskDelay(pdMS_TO_TICKS(120));
+            vTaskDelay(pdMS_TO_TICKS(100));
             continue;
         }
 
-        // Map character hash to harmonic frequencies
         uint8_t hash = (uint8_t)c;
-        float freq = baseNotes[hash % 8];
-        if (c >= 'A' && c <= 'Z') freq *= 1.15f; // Question or capitalized excitement
+        float freq = voicePitches[hash % 8];
+        if (c >= 'A' && c <= 'Z') freq *= 1.15f;
 
-        // Play expressive cute syllable (55ms duration)
-        playTone(freq, 55, 0.85f);
-        vTaskDelay(pdMS_TO_TICKS(15));
+        // Play pleasant 65ms vocal syllable tone
+        playTone(freq, 65, 0.95f);
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 
     _isPlaying = false;
