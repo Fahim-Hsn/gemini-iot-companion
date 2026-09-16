@@ -5,6 +5,9 @@
 #include <LovyanGFX.hpp>
 #include "config.h"
 
+#define SPRITE_W 180
+#define SPRITE_H 160
+
 // LovyanGFX Display class customized for ESP32-C6 & 7-Pin ST7789
 class LGFX_ST7789_C6 : public lgfx::LGFX_Device {
     lgfx::Panel_ST7789      _panel_instance;
@@ -16,8 +19,8 @@ public:
         {
             auto cfg = _bus_instance.config();
             cfg.spi_host = SPI2_HOST;
-            cfg.spi_mode = 3;           // Mode 3 is REQUIRED for CS-less ST7789 displays (CS tied to GND)
-            cfg.freq_write = 20000000;  // 20MHz for clean noise-free breadboard SPI
+            cfg.spi_mode = 3;           // Mode 3 for CS-less ST7789 displays
+            cfg.freq_write = 27000000;  // 27MHz fast SPI
             cfg.freq_read  = 16000000;
             cfg.spi_3wire  = false;
             cfg.use_lock   = true;
@@ -72,13 +75,14 @@ public:
     bool begin();
     void setBrightness(uint8_t brightness); // 0-255
     LGFX_ST7789_C6& getLGFX() { return _gfx; }
+    LGFX_Sprite& getMascotSprite() { return _mascotSprite; }
     
-    void clear(uint16_t color = 0x0000);
-    void startWrite() { _gfx.startWrite(); }
-    void endWrite() { _gfx.endWrite(); }
+    void clear(uint16_t color = 0x10A2);
+    void pushMascotSprite(int x = (LCD_WIDTH - SPRITE_W) / 2, int y = 22);
 
 private:
     LGFX_ST7789_C6 _gfx;
+    LGFX_Sprite    _mascotSprite;
     bool           _isInitialized;
 };
 

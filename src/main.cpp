@@ -33,11 +33,11 @@ void IRAM_ATTR onActionButtonPressed() {
 }
 
 // -------------------------------------------------------------------------
-// Display Animation FreeRTOS Task (~25 FPS Smooth Hardware Direct Render)
+// Display Animation FreeRTOS Task (30 FPS Butter-Smooth Zero-Flicker)
 // -------------------------------------------------------------------------
 void displayTaskFunc(void* parameter) {
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(40); // ~25 FPS
+    const TickType_t xFrequency = pdMS_TO_TICKS(33); // 30 FPS
 
     log_i("Display Task running on Core %d", xPortGetCoreID());
 
@@ -47,11 +47,14 @@ void displayTaskFunc(void* parameter) {
         // 1. Update mascot physics & internal timers
         animationEngine.update(mouthLevel);
 
-        // 2. Direct hardware rendering to ST7789
-        displayDriver.startWrite();
-        animationEngine.render(displayDriver.getLGFX(), mouthLevel);
+        // 2. Render mascot into offscreen buffer (zero screen flicker)
+        animationEngine.render(displayDriver.getMascotSprite(), mouthLevel);
+
+        // 3. Instant DMA blit of mascot sprite to center of screen
+        displayDriver.pushMascotSprite((LCD_WIDTH - SPRITE_W) / 2, 22);
+
+        // 4. Update status & dialogue overlays
         uiManager.renderOverlay(displayDriver.getLGFX());
-        displayDriver.endWrite();
 
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }

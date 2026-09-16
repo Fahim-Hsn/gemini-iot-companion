@@ -19,11 +19,11 @@ public:
     void setTheme(UITheme theme);
     UITheme getTheme() const { return _theme; }
 
-    // Main animation update tick (call at ~30 FPS)
+    // Main animation update tick
     void update(float mouthLipSyncLevel = 0.0f);
 
-    // Render mascot frame directly onto physical display
-    void render(LGFX_ST7789_C6& gfx, float mouthLevel);
+    // Render mascot frame smoothly into offscreen sprite (zero screen tearing)
+    void render(LGFX_Sprite& sprite, float mouthLevel);
 
 private:
     MascotEmotion _currentEmotion;
@@ -53,12 +53,12 @@ private:
     uint16_t      _colNoseMouth;      // Dark Cocoa
 
     void updatePalette();
-    void drawFoxEars(LGFX_ST7789_C6& gfx, int cx, int cy, float earAngle);
-    void drawFoxHead(LGFX_ST7789_C6& gfx, int cx, int cy);
-    void drawFoxCheeksAndBlush(LGFX_ST7789_C6& gfx, int cx, int cy);
-    void drawFoxEyes(LGFX_ST7789_C6& gfx, int cx, int cy, MascotEmotion emotion, bool isBlinking);
-    void drawFoxMouth(LGFX_ST7789_C6& gfx, int cx, int cy, MascotEmotion emotion, float mouthLevel);
-    void drawEmotionParticles(LGFX_ST7789_C6& gfx, int cx, int cy, MascotEmotion emotion);
+    void drawFoxEars(LGFX_Sprite& sprite, int cx, int cy, float earAngle);
+    void drawFoxHead(LGFX_Sprite& sprite, int cx, int cy);
+    void drawFoxCheeksAndBlush(LGFX_Sprite& sprite, int cx, int cy);
+    void drawFoxEyes(LGFX_Sprite& sprite, int cx, int cy, MascotEmotion emotion, bool isBlinking);
+    void drawFoxMouth(LGFX_Sprite& sprite, int cx, int cy, MascotEmotion emotion, float mouthLevel);
+    void drawEmotionParticles(LGFX_Sprite& sprite, int cx, int cy, MascotEmotion emotion);
 };
 
 extern AnimationEngine animationEngine;

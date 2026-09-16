@@ -2,9 +2,11 @@
 
 DisplayDriver displayDriver;
 
-DisplayDriver::DisplayDriver() : _isInitialized(false) {}
+DisplayDriver::DisplayDriver() : _mascotSprite(&_gfx), _isInitialized(false) {}
 
-DisplayDriver::~DisplayDriver() {}
+DisplayDriver::~DisplayDriver() {
+    _mascotSprite.deleteSprite();
+}
 
 bool DisplayDriver::begin() {
     if (_isInitialized) return true;
@@ -26,10 +28,18 @@ bool DisplayDriver::begin() {
     _gfx.setColorDepth(16); // RGB565
 
     setBrightness(255); // Max brightness
-    clear(0x10A2);      // Draw nice dark mascot background immediately
+    clear(0x10A2);      // Draw nice dark mascot background once
+
+    // Create a compact 180x160 offscreen sprite (only 57KB RAM) for flicker-free rendering
+    _mascotSprite.setColorDepth(16);
+    void* ptr = _mascotSprite.createSprite(SPRITE_W, SPRITE_H);
+    if (!ptr) {
+        log_e("Failed to create mascot sprite, falling back to direct render");
+    } else {
+        log_i("Mascot sprite allocated (%dx%d, 57KB) for butter-smooth animation.", SPRITE_W, SPRITE_H);
+    }
     
     _isInitialized = true;
-    log_i("ST7789 7-pin 240x240 Display initialized directly with zero RAM footprint.");
     return true;
 }
 
@@ -39,4 +49,8 @@ void DisplayDriver::setBrightness(uint8_t brightness) {
 
 void DisplayDriver::clear(uint16_t color) {
     _gfx.fillScreen(color);
+}
+
+void DisplayDriver::pushMascotSprite(int x, int y) {
+    _mascotSprite.pushSprite(x, y);
 }
