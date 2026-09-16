@@ -64,13 +64,12 @@
 // Pin Configuration (ESP32-C6-DevKitC-1 v1.2 Pinout)
 // =========================================================================
 
-// --- ST7789 1.3" 240x240 IPS Display (SPI) ---
-#define PIN_LCD_MOSI            7     // Right Pin 6 (SDA / MOSI)
-#define PIN_LCD_SCLK            6     // Right Pin 5 (SCL / SCLK)
-#define PIN_LCD_CS              18    // Left Pin 10 (CS)
-#define PIN_LCD_DC              19    // Left Pin 9 (DC / Data-Command)
-#define PIN_LCD_RST             1     // Right Pin 8 (RST - or connect to 3V3)
-#define PIN_LCD_BL              5     // Right Pin 4 (BL - Backlight)
+// --- ST7789 1.3" 240x240 IPS Display (7-Pin Module: GND, VCC, SCL, SDA, RES, DC, BLK) ---
+#define PIN_LCD_MOSI            7     // Right Pin 6 (SDA)
+#define PIN_LCD_SCLK            6     // Right Pin 5 (SCL)
+#define PIN_LCD_DC              19    // Left Pin 9 (DC)
+#define PIN_LCD_RST             1     // Right Pin 8 (RES - or connect to 3V3)
+#define PIN_LCD_BL              5     // Right Pin 4 (BLK - Backlight, or connect to 3V3)
 #define LCD_WIDTH               240
 #define LCD_HEIGHT              240
 #define LCD_SPI_HOST            SPI2_HOST

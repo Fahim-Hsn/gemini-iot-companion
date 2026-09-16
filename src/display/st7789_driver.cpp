@@ -11,11 +11,15 @@ DisplayDriver::~DisplayDriver() {
 bool DisplayDriver::begin() {
     if (_isInitialized) return true;
 
+    // Explicitly power on Backlight (BLK)
+    pinMode(PIN_LCD_BL, OUTPUT);
+    digitalWrite(PIN_LCD_BL, HIGH);
+
     _gfx.init();
     _gfx.setRotation(0);
     _gfx.setColorDepth(16); // RGB565
 
-    // Initialize 240x240 double buffer sprite canvas (PSRAM / Internal RAM)
+    // Initialize 240x240 double buffer sprite canvas
     _canvas.setColorDepth(16);
     void* buffer = _canvas.createSprite(LCD_WIDTH, LCD_HEIGHT);
     if (!buffer) {
@@ -23,10 +27,10 @@ bool DisplayDriver::begin() {
         return false;
     }
 
-    setBrightness(220); // 85% default brightness
+    setBrightness(255); // Max brightness
     clear(0x0000);
     _isInitialized = true;
-    log_i("ST7789 240x240 Display & Canvas initialized successfully.");
+    log_i("ST7789 7-pin 240x240 Display initialized successfully.");
     return true;
 }
 

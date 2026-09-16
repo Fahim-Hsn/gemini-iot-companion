@@ -32,8 +32,8 @@ public:
 
         {
             auto cfg = _panel_instance.config();
-            cfg.pin_cs           = PIN_LCD_CS;
-            cfg.pin_rst          = PIN_LCD_RST;
+            cfg.pin_cs           = -1;  // 7-Pin ST7789 has no CS pin (CS tied to GND on PCB)
+            cfg.pin_rst          = PIN_LCD_RST; // GPIO 1 (or -1 if connected to 3V3/RST)
             cfg.pin_busy         = -1;
             cfg.panel_width      = LCD_WIDTH;
             cfg.panel_height     = LCD_HEIGHT;
@@ -43,7 +43,7 @@ public:
             cfg.dummy_read_pixel = 8;
             cfg.dummy_read_bits  = 1;
             cfg.readable         = false;
-            cfg.invert           = true;  // ST7789 IPS typically needs inversion
+            cfg.invert           = true;  // ST7789 IPS 240x240 requires inversion
             cfg.rgb_order        = false;
             cfg.dlen_16bit       = false;
             cfg.bus_shared       = false;
@@ -52,10 +52,10 @@ public:
 
         {
             auto cfg = _light_instance.config();
-            cfg.pin_bl = PIN_LCD_BL;
+            cfg.pin_bl = PIN_LCD_BL; // GPIO 5 (BLK)
             cfg.invert = false;
             cfg.freq   = 44100;
-            cfg.pwm_channel = 7;
+            cfg.pwm_channel = 1;
             _light_instance.config(cfg);
             _panel_instance.setLight(&_light_instance);
         }
