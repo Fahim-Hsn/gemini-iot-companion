@@ -61,38 +61,38 @@
 #define WEATHER_COUNTRY_CODE    "BD"
 
 // =========================================================================
-// Pin Configuration (ESP32-C6 DevKit Pinout)
+// Pin Configuration (ESP32-C6-DevKitC-1 v1.2 Pinout)
 // =========================================================================
 
 // --- ST7789 1.3" 240x240 IPS Display (SPI) ---
-#define PIN_LCD_MOSI            7
-#define PIN_LCD_SCLK            6
-#define PIN_LCD_CS              18
-#define PIN_LCD_DC              19
-#define PIN_LCD_RST             20
-#define PIN_LCD_BL              21    // Backlight PWM control
+#define PIN_LCD_MOSI            7     // Right Pin 6 (SDA / MOSI)
+#define PIN_LCD_SCLK            6     // Right Pin 5 (SCL / SCLK)
+#define PIN_LCD_CS              18    // Left Pin 10 (CS)
+#define PIN_LCD_DC              19    // Left Pin 9 (DC / Data-Command)
+#define PIN_LCD_RST             1     // Right Pin 8 (RST - or connect to 3V3)
+#define PIN_LCD_BL              5     // Right Pin 4 (BL - Backlight)
 #define LCD_WIDTH               240
 #define LCD_HEIGHT              240
 #define LCD_SPI_HOST            SPI2_HOST
 #define LCD_SPI_FREQ            40000000 // 40MHz high speed SPI
 
-// --- INMP441 Microphone (I2S In) ---
-#define PIN_MIC_SCK             2     // Bit Clock (BCLK)
-#define PIN_MIC_WS              3     // Word Select / LR Clock (LRC)
-#define PIN_MIC_SD              4     // Serial Data In (SD)
+// --- INMP441 Microphone (I2S0 In) ---
+#define PIN_MIC_SCK             2     // Right Pin 12 (SCK / BCLK)
+#define PIN_MIC_WS              3     // Right Pin 13 (WS / LRCLK)
+#define PIN_MIC_SD              4     // Right Pin 3 (SD / Serial Data In)
 #define MIC_SAMPLE_RATE         16000 // 16kHz for Voice / STT
 #define MIC_BITS_PER_SAMPLE     16
 #define MIC_RECORD_MAX_SEC      8     // Maximum recording window
 
-// --- MAX98357A I2S DAC Amplifier (I2S Out) ---
-#define PIN_SPK_BCLK            22    // Bit Clock
-#define PIN_SPK_LRC             23    // Word Select / LR Clock
-#define PIN_SPK_DIN             15    // Data In (DIN)
+// --- MAX98357A I2S DAC Amplifier (I2S1 Out) ---
+#define PIN_SPK_BCLK            21    // Left Pin 7 (BCLK)
+#define PIN_SPK_LRC             22    // Left Pin 6 (LRC / WS)
+#define PIN_SPK_DIN             23    // Left Pin 5 (DIN / Data In)
 #define SPK_SAMPLE_RATE         24000 // 24kHz / 16kHz for TTS playback
 
 // --- Push Button & Interactions ---
-#define PIN_BUTTON_ACTION       9     // Boot button or external push-to-talk button
-#define PIN_STATUS_RGB          8     // WS2812 RGB LED (Onboard ESP32-C6)
+#define PIN_BUTTON_ACTION       9     // Left Pin 11 (Boot button / Push-to-Talk)
+#define PIN_STATUS_RGB          8     // Right Pin 9 (Onboard RGB LED)
 
 // =========================================================================
 // FreeRTOS Task Priorities & Stack Sizes

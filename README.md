@@ -24,62 +24,62 @@
 
 ---
 
-## 🔌 Complete Wiring Diagram (সার্কিট ও পিন কানেকশন)
+## 🔌 Complete Wiring Diagram (আপনার ESP32-C6-DevKitC-1 v1.2 অনুযায়ী)
 
 ### 1. ST7789 240×240 IPS LCD Display (SPI)
 ```
-┌────────────────────┬──────────────────────┐
-│ ST7789 Pin         │ ESP32-C6 Pin         │
-├────────────────────┼──────────────────────┤
-│ VCC                │ 3.3V                 │
-│ GND                │ GND                  │
-│ SCL / SCLK         │ GPIO 6               │
-│ SDA / MOSI         │ GPIO 7               │
-│ RES / RST          │ GPIO 20              │
-│ DC / RS            │ GPIO 19              │
-│ CS / SS            │ GPIO 18              │
-│ BLK / BL           │ GPIO 21 (PWM BL)     │
-└────────────────────┴──────────────────────┘
+┌────────────────────┬───────────────────────────────────────┐
+│ ST7789 Display Pin │ ESP32-C6 Board Header Pin             │
+├────────────────────┼───────────────────────────────────────┤
+│ VCC                │ 3V3 (Right Header - Pin 1)            │
+│ GND                │ G / GND (Left or Right Header)        │
+│ SCL / SCLK         │ GPIO 6 (Right Header - Pin 5)         │
+│ SDA / MOSI         │ GPIO 7 (Right Header - Pin 6)         │
+│ RES / RST          │ GPIO 1 (Right Header - Pin 8) বা 3V3  │
+│ DC / RS            │ GPIO 19 (Left Header - Pin 9)         │
+│ CS / SS            │ GPIO 18 (Left Header - Pin 10)        │
+│ BLK / BL           │ GPIO 5 (Right Header - Pin 4) বা 3V3  │
+└────────────────────┴───────────────────────────────────────┘
 ```
 
 ### 2. INMP441 I2S Digital Microphone (Audio In)
 ```
-┌────────────────────┬──────────────────────┐
-│ INMP441 Pin        │ ESP32-C6 Pin         │
-├────────────────────┼──────────────────────┤
-│ VDD                │ 3.3V                 │
-│ GND                │ GND                  │
-│ L/R (Channel)      │ GND (Left Channel)   │
-│ SCK / BCLK         │ GPIO 2               │
-│ WS / LRCLK         │ GPIO 3               │
-│ SD / DATA OUT      │ GPIO 4               │
-└────────────────────┴──────────────────────┘
+┌────────────────────┬───────────────────────────────────────┐
+│ INMP441 Mic Pin    │ ESP32-C6 Board Header Pin             │
+├────────────────────┼───────────────────────────────────────┤
+│ VDD                │ 3V3 (Right Header - Pin 1)            │
+│ GND                │ G / GND                               │
+│ L/R (Channel)      │ G / GND (Tied to GND for Left Chan)   │
+│ SCK / BCLK         │ GPIO 2 (Right Header - Pin 12)        │
+│ WS / LRCLK         │ GPIO 3 (Right Header - Pin 13)        │
+│ SD / DATA OUT      │ GPIO 4 (Right Header - Pin 3)         │
+└────────────────────┴───────────────────────────────────────┘
 ```
 
 ### 3. MAX98357A I2S Class-D DAC Amplifier (Audio Out)
 ```
-┌────────────────────┬──────────────────────┐
-│ MAX98357A Pin      │ ESP32-C6 Pin         │
-├────────────────────┼──────────────────────┤
-│ VIN                │ 5V (or 3.3V)         │
-│ GND                │ GND                  │
-│ GAIN               │ GND (Default 9dB)    │
-│ SD_MODE            │ Leave unconnected    │
-│ BCLK               │ GPIO 22              │
-│ LRC / LRCLK        │ GPIO 23              │
-│ DIN / DATA IN      │ GPIO 15              │
-└────────────────────┴──────────────────────┘
+┌────────────────────┬───────────────────────────────────────┐
+│ MAX98357A DAC Pin  │ ESP32-C6 Board Header Pin             │
+├────────────────────┼───────────────────────────────────────┤
+│ VIN                │ 5V (Right Header - Pin 14) বা 3V3     │
+│ GND                │ G / GND                               │
+│ GAIN               │ G / GND (Default 9dB gain)            │
+│ SD_MODE            │ Leave unconnected                     │
+│ BCLK               │ GPIO 21 (Left Header - Pin 7)         │
+│ LRC / LRCLK        │ GPIO 22 (Left Header - Pin 6)         │
+│ DIN / DATA IN      │ GPIO 23 (Left Header - Pin 5)         │
+└────────────────────┴───────────────────────────────────────┘
 * স্পিকারের (+) ও (-) তার MAX98357A এর (+ / -) স্ক্রু টার্মিনালে কানেক্ট করুন।
 ```
 
-### 4. Push-To-Talk Button & Misc
+### 4. Push-To-Talk Button & Onboard RGB LED
 ```
-┌────────────────────┬──────────────────────┐
-│ Button / Switch    │ ESP32-C6 Pin         │
-├────────────────────┼──────────────────────┤
-│ Action Button      │ GPIO 9 to GND        │
-│ Status RGB LED     │ GPIO 8 (On-board)    │
-└────────────────────┴──────────────────────┘
+┌────────────────────┬───────────────────────────────────────┐
+│ Function / Button  │ ESP32-C6 Board Header Pin             │
+├────────────────────┼───────────────────────────────────────┤
+│ Action Button      │ GPIO 9 (Left Header - Pin 11) to GND  │
+│ Onboard RGB LED    │ GPIO 8 (Right Header - Pin 9)         │
+└────────────────────┴───────────────────────────────────────┘
 ```
 
 ---
