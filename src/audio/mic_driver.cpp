@@ -58,8 +58,14 @@ bool MicDriver::begin() {
 
 void MicDriver::end() {
     if (_isInitialized) {
+        i2s_zero_dma_buffer(_i2sPort);
         i2s_driver_uninstall(_i2sPort);
         _isInitialized = false;
+
+        pinMode(PIN_MIC_SCK, OUTPUT);
+        digitalWrite(PIN_MIC_SCK, LOW);
+        pinMode(PIN_MIC_WS, OUTPUT);
+        digitalWrite(PIN_MIC_WS, LOW);
     }
 }
 

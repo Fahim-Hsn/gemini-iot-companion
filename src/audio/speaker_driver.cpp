@@ -17,8 +17,7 @@ SpeakerDriver::~SpeakerDriver() {
 
 bool SpeakerDriver::begin(uint32_t sampleRate) {
     if (_isInitialized) {
-        i2s_driver_uninstall(_i2sPort);
-        _isInitialized = false;
+        end();
     }
 
     i2s_config_t i2s_config = {
@@ -29,7 +28,7 @@ bool SpeakerDriver::begin(uint32_t sampleRate) {
         .communication_format = I2S_COMM_FORMAT_STAND_I2S,
         .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
         .dma_buf_count = 8,
-        .dma_buf_len = 512,
+        .dma_buf_len = 256,
         .use_apll = false,
         .tx_desc_auto_clear = true,
         .fixed_mclk = 0
@@ -55,6 +54,7 @@ bool SpeakerDriver::begin(uint32_t sampleRate) {
         return false;
     }
 
+    i2s_zero_dma_buffer(_i2sPort);
     _isInitialized = true;
     log_i("MAX98357A Speaker initialized on I2S0 (BCLK:%d, LRC:%d, DIN:%d) @ %dHz",
           PIN_SPK_BCLK, PIN_SPK_LRC, PIN_SPK_DIN, sampleRate);
@@ -63,8 +63,17 @@ bool SpeakerDriver::begin(uint32_t sampleRate) {
 
 void SpeakerDriver::end() {
     if (_isInitialized) {
+        i2s_zero_dma_buffer(_i2sPort);
         i2s_driver_uninstall(_i2sPort);
         _isInitialized = false;
+
+        // Drive pins to clean LOW output state so MAX98357A DAC does not float and click
+        pinMode(PIN_SPK_BCLK, OUTPUT);
+        digitalWrite(PIN_SPK_BCLK, LOW);
+        pinMode(PIN_SPK_LRC, OUTPUT);
+        digitalWrite(PIN_SPK_LRC, LOW);
+        pinMode(PIN_SPK_DIN, OUTPUT);
+        digitalWrite(PIN_SPK_DIN, LOW);
     }
 }
 
