@@ -70,142 +70,125 @@ void UIManager::setSystemStatusText(const String& status) {
     _statusText = status;
 }
 
-void UIManager::renderOverlay(LGFX_Sprite& canvas) {
+void UIManager::renderOverlay(LGFX_ST7789_C6& gfx) {
     uint32_t now = millis();
 
-    // Check display mode timeout
     if (_modeDurationMs > 0 && (now - _modeStartTime) > _modeDurationMs) {
         _currentMode = DisplayMode::MASCOT_ONLY;
         _modeDurationMs = 0;
     }
 
-    // Check speech bubble timeout
     if (_hasSpeechBubble && _speechDurationMs > 0 && (now - _speechStartTime) > _speechDurationMs) {
         _hasSpeechBubble = false;
     }
 
-    // 1. Draw persistent top status bar
-    drawStatusBar(canvas);
+    drawStatusBar(gfx);
 
-    // 2. Draw active mode overlay
     switch (_currentMode) {
         case DisplayMode::CLOCK_OVERLAY:
-            drawClockOverlay(canvas);
+            drawClockOverlay(gfx);
             break;
 
         case DisplayMode::WEATHER_OVERLAY:
-            drawWeatherOverlay(canvas);
+            drawWeatherOverlay(gfx);
             break;
 
         case DisplayMode::TODO_LIST:
-            drawTodoListOverlay(canvas);
+            drawTodoListOverlay(gfx);
             break;
 
         case DisplayMode::CUSTOM_TEXT:
-            drawCardOverlay(canvas);
+            drawCardOverlay(gfx);
             break;
 
         case DisplayMode::SPEECH_BUBBLE:
         case DisplayMode::MASCOT_ONLY:
         default:
             if (_hasSpeechBubble) {
-                drawSpeechBubbleOverlay(canvas);
+                drawSpeechBubbleOverlay(gfx);
             }
             break;
     }
 }
 
-void UIManager::drawStatusBar(LGFX_Sprite& canvas) {
-    // Semi-transparent / dark header bar
-    canvas.fillRect(0, 0, LCD_WIDTH, 20, 0x0821);
+void UIManager::drawStatusBar(LGFX_ST7789_C6& gfx) {
+    gfx.fillRect(0, 0, LCD_WIDTH, 20, 0x0821);
 
-    // Device Name / Status
-    canvas.setTextColor(0xDEDB, 0x0821);
-    canvas.setTextSize(1);
-    canvas.drawString(_statusText, 8, 5);
+    gfx.setTextColor(0xDEDB, 0x0821);
+    gfx.setTextSize(1);
+    gfx.drawString(_statusText, 8, 5);
 
-    // WiFi Icon
     if (_wifiConnected) {
-        canvas.drawCircle(LCD_WIDTH - 20, 10, 3, 0x07E0); // Green dot
-        canvas.drawArc(LCD_WIDTH - 20, 10, 6, 5, 220, 320, 0x07E0);
+        gfx.drawCircle(LCD_WIDTH - 20, 10, 3, 0x07E0);
+        gfx.drawArc(LCD_WIDTH - 20, 10, 6, 5, 220, 320, 0x07E0);
     } else {
-        canvas.drawCircle(LCD_WIDTH - 20, 10, 3, 0xF800); // Red dot
-        canvas.drawLine(LCD_WIDTH - 23, 7, LCD_WIDTH - 17, 13, 0xF800);
+        gfx.drawCircle(LCD_WIDTH - 20, 10, 3, 0xF800);
+        gfx.drawLine(LCD_WIDTH - 23, 7, LCD_WIDTH - 17, 13, 0xF800);
     }
 }
 
-void UIManager::drawClockOverlay(LGFX_Sprite& canvas) {
-    // Glassmorphism card at bottom
+void UIManager::drawClockOverlay(LGFX_ST7789_C6& gfx) {
     int cardY = LCD_HEIGHT - 65;
-    canvas.fillRoundRect(12, cardY, LCD_WIDTH - 24, 55, 10, 0x0842);
-    canvas.drawRoundRect(12, cardY, LCD_WIDTH - 24, 55, 10, 0x39E7);
+    gfx.fillRoundRect(12, cardY, LCD_WIDTH - 24, 55, 10, 0x0842);
+    gfx.drawRoundRect(12, cardY, LCD_WIDTH - 24, 55, 10, 0x39E7);
 
-    // Time text
-    canvas.setTextColor(0xFFFF, 0x0842);
-    canvas.setTextSize(2);
-    canvas.drawString(_currentTime, 24, cardY + 10);
+    gfx.setTextColor(0xFFFF, 0x0842);
+    gfx.setTextSize(2);
+    gfx.drawString(_currentTime, 24, cardY + 10);
 
-    // Date text
-    canvas.setTextColor(0x9CF3, 0x0842);
-    canvas.setTextSize(1);
-    canvas.drawString(_currentDate, 24, cardY + 34);
+    gfx.setTextColor(0x9CF3, 0x0842);
+    gfx.setTextSize(1);
+    gfx.drawString(_currentDate, 24, cardY + 34);
 }
 
-void UIManager::drawWeatherOverlay(LGFX_Sprite& canvas) {
+void UIManager::drawWeatherOverlay(LGFX_ST7789_C6& gfx) {
     int cardY = LCD_HEIGHT - 68;
-    canvas.fillRoundRect(12, cardY, LCD_WIDTH - 24, 58, 10, 0x10A4);
-    canvas.drawRoundRect(12, cardY, LCD_WIDTH - 24, 58, 10, 0x5AEB);
+    gfx.fillRoundRect(12, cardY, LCD_WIDTH - 24, 58, 10, 0x10A4);
+    gfx.drawRoundRect(12, cardY, LCD_WIDTH - 24, 58, 10, 0x5AEB);
 
-    // Weather Icon Placeholder (Sun/Cloud)
-    canvas.fillCircle(38, cardY + 28, 12, 0xFD20); // Amber Sun
+    gfx.fillCircle(38, cardY + 28, 12, 0xFD20);
 
-    // Temp & Condition
-    canvas.setTextColor(0xFFFF, 0x10A4);
-    canvas.setTextSize(2);
-    canvas.drawString(String(_currentTempC) + "°C", 62, cardY + 10);
+    gfx.setTextColor(0xFFFF, 0x10A4);
+    gfx.setTextSize(2);
+    gfx.drawString(String(_currentTempC) + "°C", 62, cardY + 10);
 
-    canvas.setTextColor(0xBDF7, 0x10A4);
-    canvas.setTextSize(1);
-    canvas.drawString(_weatherCondition + " • " + _weatherCity, 62, cardY + 34);
+    gfx.setTextColor(0xBDF7, 0x10A4);
+    gfx.setTextSize(1);
+    gfx.drawString(_weatherCondition + " • " + _weatherCity, 62, cardY + 34);
 }
 
-void UIManager::drawTodoListOverlay(LGFX_Sprite& canvas) {
-    // Full screen translucent overlay
-    canvas.fillRoundRect(10, 26, LCD_WIDTH - 20, LCD_HEIGHT - 36, 8, 0x0821);
-    canvas.drawRoundRect(10, 26, LCD_WIDTH - 20, LCD_HEIGHT - 36, 8, 0x4208);
+void UIManager::drawTodoListOverlay(LGFX_ST7789_C6& gfx) {
+    gfx.fillRoundRect(10, 26, LCD_WIDTH - 20, LCD_HEIGHT - 36, 8, 0x0821);
+    gfx.drawRoundRect(10, 26, LCD_WIDTH - 20, LCD_HEIGHT - 36, 8, 0x4208);
 
-    canvas.setTextColor(0xFD20, 0x0821);
-    canvas.setTextSize(1);
-    canvas.drawString("TODAY'S REMINDERS", 22, 34);
+    gfx.setTextColor(0xFD20, 0x0821);
+    gfx.setTextSize(1);
+    gfx.drawString("TODAY'S REMINDERS", 22, 34);
 
-    canvas.setTextColor(0xFFFF, 0x0821);
-    canvas.drawString("[x] 10:00 AM - Check emails", 20, 56);
-    canvas.drawString("[ ] 02:30 PM - Project meeting", 20, 78);
-    canvas.drawString("[ ] 06:00 PM - Evening walk", 20, 100);
-    canvas.drawString("[ ] 08:00 PM - Learn AI coding", 20, 122);
+    gfx.setTextColor(0xFFFF, 0x0821);
+    gfx.drawString("[x] 10:00 AM - Check emails", 20, 56);
+    gfx.drawString("[ ] 02:30 PM - Project meeting", 20, 78);
+    gfx.drawString("[ ] 06:00 PM - Evening walk", 20, 100);
+    gfx.drawString("[ ] 08:00 PM - Learn AI coding", 20, 122);
 }
 
-void UIManager::drawSpeechBubbleOverlay(LGFX_Sprite& canvas) {
+void UIManager::drawSpeechBubbleOverlay(LGFX_ST7789_C6& gfx) {
     if (_speechText.length() == 0) return;
 
-    // Elegant bottom dialogue bubble
     int boxX = 10;
     int boxY = LCD_HEIGHT - 75;
     int boxW = LCD_WIDTH - 20;
     int boxH = 65;
 
-    canvas.fillRoundRect(boxX, boxY, boxW, boxH, 8, 0x0842);
-    canvas.drawRoundRect(boxX, boxY, boxW, boxH, 8, 0x52AA);
+    gfx.fillRoundRect(boxX, boxY, boxW, boxH, 8, 0x0842);
+    gfx.drawRoundRect(boxX, boxY, boxW, boxH, 8, 0x52AA);
 
-    // Character Tag
-    canvas.setTextColor(0xFCA0, 0x0842);
-    canvas.setTextSize(1);
-    canvas.drawString("Bondhu:", boxX + 8, boxY + 6);
+    gfx.setTextColor(0xFCA0, 0x0842);
+    gfx.setTextSize(1);
+    gfx.drawString("Bondhu:", boxX + 8, boxY + 6);
 
-    // Dialogue text wrapping
-    canvas.setTextColor(0xFFFF, 0x0842);
+    gfx.setTextColor(0xFFFF, 0x0842);
     
-    // Simple line wrap for preview
     String line1 = _speechText;
     String line2 = "";
     if (line1.length() > 28) {
@@ -216,25 +199,25 @@ void UIManager::drawSpeechBubbleOverlay(LGFX_Sprite& canvas) {
         }
     }
 
-    canvas.drawString(line1, boxX + 8, boxY + 22);
+    gfx.drawString(line1, boxX + 8, boxY + 22);
     if (line2.length() > 0) {
-        canvas.drawString(line2, boxX + 8, boxY + 38);
+        gfx.drawString(line2, boxX + 8, boxY + 38);
     }
 }
 
-void UIManager::drawCardOverlay(LGFX_Sprite& canvas) {
+void UIManager::drawCardOverlay(LGFX_ST7789_C6& gfx) {
     int boxX = 14;
     int boxY = LCD_HEIGHT - 65;
     int boxW = LCD_WIDTH - 28;
     int boxH = 55;
 
-    canvas.fillRoundRect(boxX, boxY, boxW, boxH, 8, 0x18C3);
-    canvas.drawRoundRect(boxX, boxY, boxW, boxH, 8, 0x632C);
+    gfx.fillRoundRect(boxX, boxY, boxW, boxH, 8, 0x18C3);
+    gfx.drawRoundRect(boxX, boxY, boxW, boxH, 8, 0x632C);
 
-    canvas.setTextColor(0xFFFF, 0x18C3);
-    canvas.setTextSize(1);
-    canvas.drawString(_cardTitle, boxX + 10, boxY + 10);
+    gfx.setTextColor(0xFFFF, 0x18C3);
+    gfx.setTextSize(1);
+    gfx.drawString(_cardTitle, boxX + 10, boxY + 10);
 
-    canvas.setTextColor(0x9CF3, 0x18C3);
-    canvas.drawString(_cardSubtitle, boxX + 10, boxY + 30);
+    gfx.setTextColor(0x9CF3, 0x18C3);
+    gfx.drawString(_cardSubtitle, boxX + 10, boxY + 30);
 }

@@ -18,8 +18,8 @@
 static volatile SystemState currentSystemState = SystemState::BOOTING;
 static volatile bool triggerVoiceChat = false;
 
-// Audio buffer in PSRAM / Heap for voice recording
-#define AUDIO_BUF_SIZE (MIC_SAMPLE_RATE * sizeof(int16_t) * MIC_RECORD_MAX_SEC)
+// Audio buffer in internal RAM: 3 seconds of 16kHz 16-bit mono audio (96 KB)
+#define AUDIO_BUF_SIZE (MIC_SAMPLE_RATE * sizeof(int16_t) * 3)
 static uint8_t* voiceRecordBuffer = nullptr;
 
 // FreeRTOS Task Handles
@@ -33,11 +33,11 @@ void IRAM_ATTR onActionButtonPressed() {
 }
 
 // -------------------------------------------------------------------------
-// Display Animation FreeRTOS Task (30 FPS)
+// Display Animation FreeRTOS Task (~25 FPS Smooth Hardware Direct Render)
 // -------------------------------------------------------------------------
 void displayTaskFunc(void* parameter) {
     TickType_t xLastWakeTime = xTaskGetTickCount();
-    const TickType_t xFrequency = pdMS_TO_TICKS(33); // ~30 FPS
+    const TickType_t xFrequency = pdMS_TO_TICKS(40); // ~25 FPS
 
     log_i("Display Task running on Core %d", xPortGetCoreID());
 
@@ -47,29 +47,26 @@ void displayTaskFunc(void* parameter) {
         // 1. Update mascot physics & internal timers
         animationEngine.update(mouthLevel);
 
-        // 2. Render mascot character on canvas
-        animationEngine.render(displayDriver.getCanvas(), mouthLevel);
-
-        // 3. Render active overlays (Clock, weather, speech bubble, status)
-        uiManager.renderOverlay(displayDriver.getCanvas());
-
-        // 4. Push frame to physical ST7789 LCD via SPI DMA
-        displayDriver.pushCanvas();
+        // 2. Direct hardware rendering to ST7789
+        displayDriver.startWrite();
+        animationEngine.render(displayDriver.getLGFX(), mouthLevel);
+        uiManager.renderOverlay(displayDriver.getLGFX());
+        displayDriver.endWrite();
 
         vTaskDelayUntil(&xLastWakeTime, xFrequency);
     }
 }
 
 // -------------------------------------------------------------------------
-// Voice Interaction Pipeline (Record -> Gemini API -> TTS -> Speaker + Mascot)
+// Voice Interaction Pipeline (Record -> Gemini API -> TTS -> Speaker)
 // -------------------------------------------------------------------------
 void voiceTaskFunc(void* parameter) {
     log_i("Voice Task running on Core %d", xPortGetCoreID());
 
     while (true) {
-        // Wait for voice activation trigger (Button or VAD)
+        // Wait for voice activation trigger (Button or Action)
         if (!triggerVoiceChat) {
-            vTaskDelay(pdMS_TO_TICKS(20));
+            vTaskDelay(pdMS_TO_TICKS(30));
             continue;
         }
         triggerVoiceChat = false;
@@ -78,6 +75,9 @@ void voiceTaskFunc(void* parameter) {
         currentSystemState = SystemState::LISTENING_VOICE;
         uiManager.setSystemStatusText("Listening...");
         animationEngine.setEmotion(MascotEmotion::LISTENING);
+        
+        // Play wake chime on speaker
+        speakerDriver.begin(SPK_SAMPLE_RATE);
         speakerDriver.playWakeChime();
 
         // 1. Record voice from INMP441 Microphone (I2S RX Mode)
@@ -85,13 +85,15 @@ void voiceTaskFunc(void* parameter) {
         micDriver.begin();
 
         size_t recordedBytes = 0;
-        bool recordedOk = micDriver.startRecording(voiceRecordBuffer, AUDIO_BUF_SIZE, &recordedBytes, 6000);
+        if (voiceRecordBuffer) {
+            micDriver.startRecording(voiceRecordBuffer, AUDIO_BUF_SIZE, &recordedBytes, 4000);
+        }
         micDriver.end(); // Done recording
 
         // Re-enable speaker for feedback tones & TTS
         speakerDriver.begin(SPK_SAMPLE_RATE);
 
-        if (!recordedOk || recordedBytes < (MIC_SAMPLE_RATE * sizeof(int16_t) / 2)) {
+        if (recordedBytes < (MIC_SAMPLE_RATE * sizeof(int16_t) / 2)) {
             log_w("No valid voice audio recorded.");
             speakerDriver.playErrorTone();
             animationEngine.setEmotion(MascotEmotion::CONFUSED, 2000);
@@ -180,61 +182,62 @@ void systemTaskFunc(void* parameter) {
 // -------------------------------------------------------------------------
 void setup() {
     Serial.begin(115200);
-    delay(1000);
+    delay(500);
     log_i("=================================================");
     log_i("  Starting Project Bondhu (Version %s)", PROJECT_BONDHU_VERSION);
     log_i("  Mascot: %s (Kitsune Fox), User: %s", MASCOT_NAME, DEFAULT_USER_NAME);
     log_i("=================================================");
 
-    // 1. Allocate Audio Buffer in PSRAM or Heap
-    voiceRecordBuffer = (uint8_t*)malloc(AUDIO_BUF_SIZE);
-    if (!voiceRecordBuffer) {
-        log_e("Critical: Failed to allocate voice record buffer!");
-    } else {
-        log_i("Allocated %u bytes for audio buffer.", AUDIO_BUF_SIZE);
-    }
-
-    // 2. Configure Action Button
-    pinMode(PIN_BUTTON_ACTION, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(PIN_BUTTON_ACTION), onActionButtonPressed, FALLING);
-
-    // 3. Initialize Display & Animation Engine
+    // 1. Initialize Display & Animation Engine IMMEDIATELY so screen turns ON
     displayDriver.begin();
     animationEngine.begin();
     uiManager.begin();
     uiManager.setSystemStatusText("Booting Bondhu...");
 
+    // Initial immediate test draw
+    displayDriver.startWrite();
+    animationEngine.render(displayDriver.getLGFX(), 0.0f);
+    uiManager.renderOverlay(displayDriver.getLGFX());
+    displayDriver.endWrite();
+
+    // 2. Allocate Lean Audio Buffer (96KB) in internal RAM
+    voiceRecordBuffer = (uint8_t*)malloc(AUDIO_BUF_SIZE);
+    if (!voiceRecordBuffer) {
+        log_w("Could not allocate 96KB audio buffer, trying 64KB fallback...");
+        voiceRecordBuffer = (uint8_t*)malloc(64 * 1024);
+    }
+    log_i("Audio buffer allocated. Free Heap: %u bytes", (unsigned)ESP.getFreeHeap());
+
+    // 3. Configure Action Button
+    pinMode(PIN_BUTTON_ACTION, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(PIN_BUTTON_ACTION), onActionButtonPressed, FALLING);
+
     // 4. Initialize Audio Drivers
     speakerDriver.begin(SPK_SAMPLE_RATE);
-    micDriver.begin();
+    speakerDriver.playReadyBeep();
 
     // 5. Initialize AI & Context Layer
     contextManager.begin();
     geminiClient.begin();
     ttsClient.begin();
 
-    // 6. Play startup chime & animation
-    speakerDriver.playWakeChime();
-    animationEngine.setEmotion(MascotEmotion::WAKING_UP, 2500);
-
-    // 7. Connect WiFi & Sync Time
-    if (wifiManager.connect(WIFI_SSID, WIFI_PASSWORD)) {
+    // 6. Connect WiFi in background
+    wifiManager.connect(WIFI_SSID, WIFI_PASSWORD);
+    if (wifiManager.isConnected()) {
         ntpClient.begin();
-        weatherClient.fetchWeather(WEATHER_CITY);
     }
 
-    // 8. Launch Multi-Core FreeRTOS Tasks
-    xTaskCreatePinnedToCore(displayTaskFunc, "DisplayTask", STACK_SIZE_DISPLAY, NULL, TASK_PRIO_DISPLAY, &hDisplayTask, 0);
-    xTaskCreatePinnedToCore(voiceTaskFunc, "VoiceTask", STACK_SIZE_NETWORK, NULL, TASK_PRIO_NETWORK, &hVoiceTask, 1);
-    xTaskCreatePinnedToCore(systemTaskFunc, "SystemTask", STACK_SIZE_SYSTEM, NULL, TASK_PRIO_SYSTEM, &hSystemTask, 0);
+    // 7. Launch Multi-Core FreeRTOS Tasks
+    xTaskCreate(displayTaskFunc, "DisplayTask", STACK_SIZE_DISPLAY, NULL, TASK_PRIO_DISPLAY, &hDisplayTask);
+    xTaskCreate(voiceTaskFunc, "VoiceTask", STACK_SIZE_NETWORK, NULL, TASK_PRIO_NETWORK, &hVoiceTask);
+    xTaskCreate(systemTaskFunc, "SystemTask", STACK_SIZE_SYSTEM, NULL, TASK_PRIO_SYSTEM, &hSystemTask);
 
     currentSystemState = SystemState::STANDBY_IDLE;
     uiManager.setSystemStatusText("Ready");
-    uiManager.setSpeechBubble("Hello! Ami Bondhu. Kemon achen?", 5000);
-    log_i("Project Bondhu initialization completed successfully!");
+    uiManager.setSpeechBubble("Hello! Ami Bondhu.", 4000);
+    log_i("Project Bondhu initialization completed! Free Heap: %u bytes", (unsigned)ESP.getFreeHeap());
 }
 
 void loop() {
-    // Loop idle — tasks handled by FreeRTOS scheduler
     vTaskDelay(pdMS_TO_TICKS(1000));
 }

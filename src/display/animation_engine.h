@@ -22,8 +22,8 @@ public:
     // Main animation update tick (call at ~30 FPS)
     void update(float mouthLipSyncLevel = 0.0f);
 
-    // Render mascot frame onto canvas
-    void render(LGFX_Sprite& canvas, float mouthLevel);
+    // Render mascot frame directly onto physical display
+    void render(LGFX_ST7789_C6& gfx, float mouthLevel);
 
 private:
     MascotEmotion _currentEmotion;
@@ -44,21 +44,21 @@ private:
 
     // Color palette according to current theme
     uint16_t      _colBackground;
-    uint16_t      _colFurPrimary;     // Warm Fox Orange / Cream
+    uint16_t      _colFurPrimary;     // Warm Fox Orange
     uint16_t      _colFurSecondary;   // Chest White / Ear Inner
     uint16_t      _colEarInner;       // Soft Pink
     uint16_t      _colBlush;          // Rosy Pink
-    uint16_t      _colEyeOuter;       // Deep Espresso / Night Navy
+    uint16_t      _colEyeOuter;       // Deep Espresso
     uint16_t      _colEyeHighlight;   // Pure White Sparkle
     uint16_t      _colNoseMouth;      // Dark Cocoa
 
     void updatePalette();
-    void drawFoxEars(LGFX_Sprite& canvas, int cx, int cy, float earAngle);
-    void drawFoxHead(LGFX_Sprite& canvas, int cx, int cy);
-    void drawFoxCheeksAndBlush(LGFX_Sprite& canvas, int cx, int cy);
-    void drawFoxEyes(LGFX_Sprite& canvas, int cx, int cy, MascotEmotion emotion, bool isBlinking);
-    void drawFoxMouth(LGFX_Sprite& canvas, int cx, int cy, MascotEmotion emotion, float mouthLevel);
-    void drawEmotionParticles(LGFX_Sprite& canvas, int cx, int cy, MascotEmotion emotion);
+    void drawFoxEars(LGFX_ST7789_C6& gfx, int cx, int cy, float earAngle);
+    void drawFoxHead(LGFX_ST7789_C6& gfx, int cx, int cy);
+    void drawFoxCheeksAndBlush(LGFX_ST7789_C6& gfx, int cx, int cy);
+    void drawFoxEyes(LGFX_ST7789_C6& gfx, int cx, int cy, MascotEmotion emotion, bool isBlinking);
+    void drawFoxMouth(LGFX_ST7789_C6& gfx, int cx, int cy, MascotEmotion emotion, float mouthLevel);
+    void drawEmotionParticles(LGFX_ST7789_C6& gfx, int cx, int cy, MascotEmotion emotion);
 };
 
 extern AnimationEngine animationEngine;

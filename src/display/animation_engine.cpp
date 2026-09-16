@@ -76,7 +76,7 @@ void AnimationEngine::updatePalette() {
 
         case UITheme::MIDNIGHT_FOX:
         default:
-            _colBackground   = 0x10A2; // Midnight Charcoal Navy (0x10A2)
+            _colBackground   = 0x10A2; // Midnight Charcoal Navy
             _colFurPrimary   = 0xFCA0; // Vibrant Fox Orange
             _colFurSecondary = 0xFFFF; // Snow White
             _colEarInner     = 0xFBAF; // Blossom Pink
@@ -123,86 +123,84 @@ void AnimationEngine::update(float mouthLipSyncLevel) {
     if (_thinkOrbAngle > 2.0f * M_PI) _thinkOrbAngle -= 2.0f * M_PI;
 }
 
-void AnimationEngine::render(LGFX_Sprite& canvas, float mouthLevel) {
-    // Fill themed background
-    canvas.fillScreen(_colBackground);
-
+void AnimationEngine::render(LGFX_ST7789_C6& gfx, float mouthLevel) {
     int centerX = LCD_WIDTH / 2;
     int centerY = (LCD_HEIGHT / 2) + (int)_breathOffset + 8;
 
+    // Fast clear & background
+    gfx.fillScreen(_colBackground);
+
     // 1. Draw Fox Ears (Behind head)
-    drawFoxEars(canvas, centerX, centerY, _earTwitchOffset);
+    drawFoxEars(gfx, centerX, centerY, _earTwitchOffset);
 
     // 2. Draw Fox Head Shape
-    drawFoxHead(canvas, centerX, centerY);
+    drawFoxHead(gfx, centerX, centerY);
 
     // 3. Draw Cheeks and Blush
-    drawFoxCheeksAndBlush(canvas, centerX, centerY);
+    drawFoxCheeksAndBlush(gfx, centerX, centerY);
 
     // 4. Draw Expressive Eyes
-    drawFoxEyes(canvas, centerX, centerY, _currentEmotion, _isBlinking);
+    drawFoxEyes(gfx, centerX, centerY, _currentEmotion, _isBlinking);
 
     // 5. Draw Nose and Mouth with Lip Sync
-    drawFoxMouth(canvas, centerX, centerY, _currentEmotion, mouthLevel);
+    drawFoxMouth(gfx, centerX, centerY, _currentEmotion, mouthLevel);
 
-    // 6. Draw Special Emotional Particles (Hearts, Zzz, Orbiting Dots, Sparkles)
-    drawEmotionParticles(canvas, centerX, centerY, _currentEmotion);
+    // 6. Draw Special Emotional Particles
+    drawEmotionParticles(gfx, centerX, centerY, _currentEmotion);
 }
 
-void AnimationEngine::drawFoxEars(LGFX_Sprite& canvas, int cx, int cy, float earAngle) {
+void AnimationEngine::drawFoxEars(LGFX_ST7789_C6& gfx, int cx, int cy, float earAngle) {
     // Left Ear
     int le_x1 = cx - 68, le_y1 = cy - 25;
     int le_x2 = cx - 30, le_y2 = cy - 58;
     int le_x3 = cx - 85 + (int)earAngle, le_y3 = cy - 95;
 
-    canvas.fillTriangle(le_x1, le_y1, le_x2, le_y2, le_x3, le_y3, _colFurPrimary);
-    // Inner Pink
-    canvas.fillTriangle(le_x1 + 10, le_y1 - 5, le_x2 - 4, le_y2 - 2, le_x3 + 8, le_y3 + 14, _colEarInner);
+    gfx.fillTriangle(le_x1, le_y1, le_x2, le_y2, le_x3, le_y3, _colFurPrimary);
+    gfx.fillTriangle(le_x1 + 10, le_y1 - 5, le_x2 - 4, le_y2 - 2, le_x3 + 8, le_y3 + 14, _colEarInner);
 
     // Right Ear
     int re_x1 = cx + 68, re_y1 = cy - 25;
     int re_x2 = cx + 30, re_y2 = cy - 58;
     int re_x3 = cx + 85 - (int)earAngle, re_y3 = cy - 95;
 
-    canvas.fillTriangle(re_x1, re_y1, re_x2, re_y2, re_x3, re_y3, _colFurPrimary);
-    // Inner Pink
-    canvas.fillTriangle(re_x1 - 10, re_y1 - 5, re_x2 + 4, re_y2 - 2, re_x3 - 8, re_y3 + 14, _colEarInner);
+    gfx.fillTriangle(re_x1, re_y1, re_x2, re_y2, re_x3, re_y3, _colFurPrimary);
+    gfx.fillTriangle(re_x1 - 10, re_y1 - 5, re_x2 + 4, re_y2 - 2, re_x3 - 8, re_y3 + 14, _colEarInner);
 }
 
-void AnimationEngine::drawFoxHead(LGFX_Sprite& canvas, int cx, int cy) {
+void AnimationEngine::drawFoxHead(LGFX_ST7789_C6& gfx, int cx, int cy) {
     // Main round head base
-    canvas.fillEllipse(cx, cy - 8, 70, 58, _colFurPrimary);
+    gfx.fillEllipse(cx, cy - 8, 70, 58, _colFurPrimary);
 
     // Fluffy side cheek tufts
-    canvas.fillTriangle(cx - 65, cy - 10, cx - 88, cy + 8, cx - 45, cy + 28, _colFurPrimary);
-    canvas.fillTriangle(cx + 65, cy - 10, cx + 88, cy + 8, cx + 45, cy + 28, _colFurPrimary);
+    gfx.fillTriangle(cx - 65, cy - 10, cx - 88, cy + 8, cx - 45, cy + 28, _colFurPrimary);
+    gfx.fillTriangle(cx + 65, cy - 10, cx + 88, cy + 8, cx + 45, cy + 28, _colFurPrimary);
 
     // White Muzzle / Chest Fur mask
-    canvas.fillEllipse(cx, cy + 12, 48, 36, _colFurSecondary);
-    canvas.fillTriangle(cx - 36, cy + 8, cx, cy - 8, cx + 36, cy + 8, _colFurSecondary);
+    gfx.fillEllipse(cx, cy + 12, 48, 36, _colFurSecondary);
+    gfx.fillTriangle(cx - 36, cy + 8, cx, cy - 8, cx + 36, cy + 8, _colFurSecondary);
 }
 
-void AnimationEngine::drawFoxCheeksAndBlush(LGFX_Sprite& canvas, int cx, int cy) {
+void AnimationEngine::drawFoxCheeksAndBlush(LGFX_ST7789_C6& gfx, int cx, int cy) {
     // Rosy Pink Cheeks
-    canvas.fillCircle(cx - 46, cy + 16, 11, _colBlush);
-    canvas.fillCircle(cx + 46, cy + 16, 11, _colBlush);
+    gfx.fillCircle(cx - 46, cy + 16, 11, _colBlush);
+    gfx.fillCircle(cx + 46, cy + 16, 11, _colBlush);
 
     // Cute subtle whisker dots
-    canvas.fillCircle(cx - 28, cy + 15, 2, _colFurPrimary);
-    canvas.fillCircle(cx - 35, cy + 19, 2, _colFurPrimary);
-    canvas.fillCircle(cx + 28, cy + 15, 2, _colFurPrimary);
-    canvas.fillCircle(cx + 35, cy + 19, 2, _colFurPrimary);
+    gfx.fillCircle(cx - 28, cy + 15, 2, _colFurPrimary);
+    gfx.fillCircle(cx - 35, cy + 19, 2, _colFurPrimary);
+    gfx.fillCircle(cx + 28, cy + 15, 2, _colFurPrimary);
+    gfx.fillCircle(cx + 35, cy + 19, 2, _colFurPrimary);
 }
 
-void AnimationEngine::drawFoxEyes(LGFX_Sprite& canvas, int cx, int cy, MascotEmotion emotion, bool isBlinking) {
+void AnimationEngine::drawFoxEyes(LGFX_ST7789_C6& gfx, int cx, int cy, MascotEmotion emotion, bool isBlinking) {
     int eyeL_X = cx - 28;
     int eyeR_X = cx + 28;
     int eyeY   = cy - 6;
 
     if (isBlinking || emotion == MascotEmotion::SLEEPING) {
         // Closed curved happy/sleeping line eyes ( ^  ^ )
-        canvas.drawArc(eyeL_X, eyeY + 4, 12, 10, 200, 340, _colEyeOuter);
-        canvas.drawArc(eyeR_X, eyeY + 4, 12, 10, 200, 340, _colEyeOuter);
+        gfx.drawArc(eyeL_X, eyeY + 4, 12, 10, 200, 340, _colEyeOuter);
+        gfx.drawArc(eyeR_X, eyeY + 4, 12, 10, 200, 340, _colEyeOuter);
         return;
     }
 
@@ -210,141 +208,123 @@ void AnimationEngine::drawFoxEyes(LGFX_Sprite& canvas, int cx, int cy, MascotEmo
         case MascotEmotion::HAPPY:
         case MascotEmotion::EXCITED:
             // Curved anime joyful eyes (⌒ ⌒)
-            canvas.fillArc(eyeL_X, eyeY + 6, 14, 8, 200, 340, _colEyeOuter);
-            canvas.fillArc(eyeR_X, eyeY + 6, 14, 8, 200, 340, _colEyeOuter);
+            gfx.fillArc(eyeL_X, eyeY + 6, 14, 8, 200, 340, _colEyeOuter);
+            gfx.fillArc(eyeR_X, eyeY + 6, 14, 8, 200, 340, _colEyeOuter);
             break;
 
         case MascotEmotion::SAD:
             // Droopy sad eyes
-            canvas.fillEllipse(eyeL_X, eyeY + 2, 11, 14, _colEyeOuter);
-            canvas.fillEllipse(eyeR_X, eyeY + 2, 11, 14, _colEyeOuter);
-            // Tear sparkle on left eye
-            canvas.fillCircle(eyeL_X - 10, eyeY + 14, 4, 0x5DFF);
+            gfx.fillEllipse(eyeL_X, eyeY + 2, 11, 14, _colEyeOuter);
+            gfx.fillEllipse(eyeR_X, eyeY + 2, 11, 14, _colEyeOuter);
+            gfx.fillCircle(eyeL_X - 10, eyeY + 14, 4, 0x5DFF);
             break;
 
         case MascotEmotion::CONFUSED:
             // One big eye, one squinted eye (?_o)
-            canvas.fillEllipse(eyeL_X, eyeY, 13, 16, _colEyeOuter);
-            canvas.fillCircle(eyeL_X + 2, eyeY - 4, 4, _colEyeHighlight);
-            canvas.drawArc(eyeR_X, eyeY + 4, 11, 9, 210, 330, _colEyeOuter);
+            gfx.fillEllipse(eyeL_X, eyeY, 13, 16, _colEyeOuter);
+            gfx.fillCircle(eyeL_X + 2, eyeY - 4, 4, _colEyeHighlight);
+            gfx.drawArc(eyeR_X, eyeY + 4, 11, 9, 210, 330, _colEyeOuter);
             break;
 
         case MascotEmotion::THINKING:
             // Eyes looking slightly upward
-            canvas.fillEllipse(eyeL_X, eyeY - 4, 12, 14, _colEyeOuter);
-            canvas.fillEllipse(eyeR_X, eyeY - 4, 12, 14, _colEyeOuter);
-            canvas.fillCircle(eyeL_X - 2, eyeY - 8, 4, _colEyeHighlight);
-            canvas.fillCircle(eyeR_X - 2, eyeY - 8, 4, _colEyeHighlight);
+            gfx.fillEllipse(eyeL_X, eyeY - 4, 12, 14, _colEyeOuter);
+            gfx.fillEllipse(eyeR_X, eyeY - 4, 12, 14, _colEyeOuter);
+            gfx.fillCircle(eyeL_X - 2, eyeY - 8, 4, _colEyeHighlight);
+            gfx.fillCircle(eyeR_X - 2, eyeY - 8, 4, _colEyeHighlight);
             break;
 
         case MascotEmotion::LISTENING:
             // Wide sparkling attentive anime pupils
-            canvas.fillEllipse(eyeL_X, eyeY - 2, 14, 17, _colEyeOuter);
-            canvas.fillEllipse(eyeR_X, eyeY - 2, 14, 17, _colEyeOuter);
-            // Big double sparkle highlight
-            canvas.fillCircle(eyeL_X - 3, eyeY - 7, 5, _colEyeHighlight);
-            canvas.fillCircle(eyeL_X + 4, eyeY + 4, 2, _colEyeHighlight);
-            canvas.fillCircle(eyeR_X - 3, eyeY - 7, 5, _colEyeHighlight);
-            canvas.fillCircle(eyeR_X + 4, eyeY + 4, 2, _colEyeHighlight);
+            gfx.fillEllipse(eyeL_X, eyeY - 2, 14, 17, _colEyeOuter);
+            gfx.fillEllipse(eyeR_X, eyeY - 2, 14, 17, _colEyeOuter);
+            gfx.fillCircle(eyeL_X - 3, eyeY - 7, 5, _colEyeHighlight);
+            gfx.fillCircle(eyeL_X + 4, eyeY + 4, 2, _colEyeHighlight);
+            gfx.fillCircle(eyeR_X - 3, eyeY - 7, 5, _colEyeHighlight);
+            gfx.fillCircle(eyeR_X + 4, eyeY + 4, 2, _colEyeHighlight);
             break;
 
         case MascotEmotion::IDLE:
         case MascotEmotion::SPEAKING:
         default:
             // Standard cute cartoon eyes
-            canvas.fillEllipse(eyeL_X, eyeY, 12, 15, _colEyeOuter);
-            canvas.fillEllipse(eyeR_X, eyeY, 12, 15, _colEyeOuter);
-            // Eye Highlights
-            canvas.fillCircle(eyeL_X - 3, eyeY - 5, 4, _colEyeHighlight);
-            canvas.fillCircle(eyeL_X + 3, eyeY + 3, 2, _colEyeHighlight);
-            canvas.fillCircle(eyeR_X - 3, eyeY - 5, 4, _colEyeHighlight);
-            canvas.fillCircle(eyeR_X + 3, eyeY + 3, 2, _colEyeHighlight);
+            gfx.fillEllipse(eyeL_X, eyeY, 12, 15, _colEyeOuter);
+            gfx.fillEllipse(eyeR_X, eyeY, 12, 15, _colEyeOuter);
+            gfx.fillCircle(eyeL_X - 3, eyeY - 5, 4, _colEyeHighlight);
+            gfx.fillCircle(eyeL_X + 3, eyeY + 3, 2, _colEyeHighlight);
+            gfx.fillCircle(eyeR_X - 3, eyeY - 5, 4, _colEyeHighlight);
+            gfx.fillCircle(eyeR_X + 3, eyeY + 3, 2, _colEyeHighlight);
             break;
     }
 }
 
-void AnimationEngine::drawFoxMouth(LGFX_Sprite& canvas, int cx, int cy, MascotEmotion emotion, float mouthLevel) {
+void AnimationEngine::drawFoxMouth(LGFX_ST7789_C6& gfx, int cx, int cy, MascotEmotion emotion, float mouthLevel) {
     int noseX = cx;
     int noseY = cy + 4;
 
-    // Small cute triangular cocoa nose
-    canvas.fillTriangle(noseX - 4, noseY - 2, noseX + 4, noseY - 2, noseX, noseY + 3, _colNoseMouth);
-
+    gfx.fillTriangle(noseX - 4, noseY - 2, noseX + 4, noseY - 2, noseX, noseY + 3, _colNoseMouth);
     int mouthY = noseY + 6;
 
     if (mouthLevel > 0.08f || emotion == MascotEmotion::SPEAKING) {
-        // Animated open mouth with real-time lip sync level
         int openH = (int)(mouthLevel * 18.0f) + 4;
         if (openH > 22) openH = 22;
         int openW = 10 + (openH / 2);
 
-        // Open mouth cavity (dark red/burgundy)
-        canvas.fillEllipse(cx, mouthY + (openH / 2), openW, openH, 0x8800);
-        // Pink tongue inside
-        canvas.fillEllipse(cx, mouthY + openH - 2, openW - 3, openH / 2, 0xFB56);
-        // Mouth outline
-        canvas.drawEllipse(cx, mouthY + (openH / 2), openW, openH, _colNoseMouth);
+        gfx.fillEllipse(cx, mouthY + (openH / 2), openW, openH, 0x8800);
+        gfx.fillEllipse(cx, mouthY + openH - 2, openW - 3, openH / 2, 0xFB56);
+        gfx.drawEllipse(cx, mouthY + (openH / 2), openW, openH, _colNoseMouth);
     } else {
-        // Closed / smiling cat/fox mouth (:3)
         switch (emotion) {
             case MascotEmotion::HAPPY:
             case MascotEmotion::EXCITED:
-                // Big smile
-                canvas.drawArc(cx - 6, mouthY + 1, 6, 5, 20, 160, _colNoseMouth);
-                canvas.drawArc(cx + 6, mouthY + 1, 6, 5, 20, 160, _colNoseMouth);
+                gfx.drawArc(cx - 6, mouthY + 1, 6, 5, 20, 160, _colNoseMouth);
+                gfx.drawArc(cx + 6, mouthY + 1, 6, 5, 20, 160, _colNoseMouth);
                 break;
 
             case MascotEmotion::SAD:
-                // Downward frown
-                canvas.drawArc(cx, mouthY + 8, 10, 8, 200, 340, _colNoseMouth);
+                gfx.drawArc(cx, mouthY + 8, 10, 8, 200, 340, _colNoseMouth);
                 break;
 
             case MascotEmotion::CONFUSED:
-                // Wavy mouth
-                canvas.drawLine(cx - 8, mouthY + 3, cx, mouthY + 6, _colNoseMouth);
-                canvas.drawLine(cx, mouthY + 6, cx + 8, mouthY + 2, _colNoseMouth);
+                gfx.drawLine(cx - 8, mouthY + 3, cx, mouthY + 6, _colNoseMouth);
+                gfx.drawLine(cx, mouthY + 6, cx + 8, mouthY + 2, _colNoseMouth);
                 break;
 
             default:
-                // Classic cute w-mouth (:3)
-                canvas.drawArc(cx - 5, mouthY, 5, 4, 30, 160, _colNoseMouth);
-                canvas.drawArc(cx + 5, mouthY, 5, 4, 20, 150, _colNoseMouth);
+                gfx.drawArc(cx - 5, mouthY, 5, 4, 30, 160, _colNoseMouth);
+                gfx.drawArc(cx + 5, mouthY, 5, 4, 20, 150, _colNoseMouth);
                 break;
         }
     }
 }
 
-void AnimationEngine::drawEmotionParticles(LGFX_Sprite& canvas, int cx, int cy, MascotEmotion emotion) {
+void AnimationEngine::drawEmotionParticles(LGFX_ST7789_C6& gfx, int cx, int cy, MascotEmotion emotion) {
     uint32_t now = millis();
 
     if (emotion == MascotEmotion::HAPPY || emotion == MascotEmotion::EXCITED) {
-        // Floating Heart on top right
         float floatY = sinf((float)now / 300.0f) * 4.0f;
         int hx = cx + 62, hy = cy - 45 + (int)floatY;
-        canvas.fillCircle(hx - 4, hy, 5, 0xF814); // Pink-Red
-        canvas.fillCircle(hx + 4, hy, 5, 0xF814);
-        canvas.fillTriangle(hx - 8, hy + 2, hx + 8, hy + 2, hx, hy + 10, 0xF814);
+        gfx.fillCircle(hx - 4, hy, 5, 0xF814);
+        gfx.fillCircle(hx + 4, hy, 5, 0xF814);
+        gfx.fillTriangle(hx - 8, hy + 2, hx + 8, hy + 2, hx, hy + 10, 0xF814);
     } else if (emotion == MascotEmotion::THINKING) {
-        // Orbiting glowing dots / stars
         for (int i = 0; i < 3; i++) {
             float angle = _thinkOrbAngle + (i * (2.0f * M_PI / 3.0f));
             int ox = cx + (int)(cosf(angle) * 75.0f);
             int oy = cy - 25 + (int)(sinf(angle) * 22.0f);
-            canvas.fillCircle(ox, oy, 4, 0x07FF); // Glowing cyan dots
-            canvas.fillCircle(ox, oy, 2, 0xFFFF);
+            gfx.fillCircle(ox, oy, 4, 0x07FF);
+            gfx.fillCircle(ox, oy, 2, 0xFFFF);
         }
     } else if (emotion == MascotEmotion::SLEEPING) {
-        // Floating Zzz letters
         int zOffset = (_frameCount * 2) % 60;
         int zx = cx + 45 + (zOffset / 3);
         int zy = cy - 35 - zOffset;
-        canvas.setTextColor(0xAD7F); // Light blue
-        canvas.setTextSize(1);
-        canvas.drawString("z", zx - 10, zy + 15);
-        canvas.drawString("Z", zx, zy);
+        gfx.setTextColor(0xAD7F);
+        gfx.setTextSize(1);
+        gfx.drawString("z", zx - 10, zy + 15);
+        gfx.drawString("Z", zx, zy);
     } else if (emotion == MascotEmotion::LISTENING) {
-        // Sound wave pulsing concentric arcs
         int pulseRadius = 25 + ((_frameCount * 3) % 20);
-        canvas.drawCircle(cx, cy - 30, pulseRadius, 0xFD20); // Amber pulse
+        gfx.drawCircle(cx, cy - 30, pulseRadius, 0xFD20);
     }
 }
