@@ -29,7 +29,7 @@ def load_env_file(filepath=".env"):
 
 _env = load_env_file()
 GEMINI_API_KEY = _env.get("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
-GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_MODEL = "gemini-3.6-flash"
 
 SYSTEM_INSTRUCTION = """
 You are 'Bondhu' (also called 'Kiko'), a very cute, helpful, and lively animal mascot (Kitsune/Fox) desktop AI companion created for Fahim.

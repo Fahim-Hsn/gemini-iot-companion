@@ -42,7 +42,9 @@
 #ifndef GEMINI_API_KEY
 #define GEMINI_API_KEY          "YOUR_GEMINI_API_KEY"
 #endif
-#define GEMINI_MODEL            "gemini-2.0-flash" 
+#ifndef GEMINI_MODEL
+#define GEMINI_MODEL            "gemini-3.6-flash"
+#endif
 #define GEMINI_API_HOST         "generativelanguage.googleapis.com"
 
 #ifndef GOOGLE_TTS_API_KEY
