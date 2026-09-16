@@ -83,20 +83,32 @@ void voiceTaskFunc(void* parameter) {
         speakerDriver.begin(SPK_SAMPLE_RATE);
         speakerDriver.playWakeChime();
 
+        // Verify WiFi is connected
+        if (!wifiManager.isConnected()) {
+            log_w("Cannot process voice: WiFi is not connected!");
+            speakerDriver.begin(SPK_SAMPLE_RATE);
+            speakerDriver.playErrorTone();
+            uiManager.setCardInfo("WiFi Offline", "Please check router", 4000);
+            animationEngine.setEmotion(MascotEmotion::CONFUSED, 3000);
+            uiManager.setSystemStatusText("WiFi Offline");
+            currentSystemState = SystemState::STANDBY_IDLE;
+            continue;
+        }
+
         // 1. Record voice from INMP441 Microphone (I2S RX Mode)
         speakerDriver.end(); // Release I2S bus for mic input
         micDriver.begin();
 
         size_t recordedBytes = 0;
         if (voiceRecordBuffer) {
-            micDriver.startRecording(voiceRecordBuffer, AUDIO_BUF_SIZE, &recordedBytes, 4000);
+            micDriver.startRecording(voiceRecordBuffer, AUDIO_BUF_SIZE, &recordedBytes, 2500);
         }
         micDriver.end(); // Done recording
 
         // Re-enable speaker for feedback tones & TTS
         speakerDriver.begin(SPK_SAMPLE_RATE);
 
-        if (recordedBytes < (MIC_SAMPLE_RATE * sizeof(int16_t) / 2)) {
+        if (recordedBytes < (MIC_SAMPLE_RATE * sizeof(int16_t) / 4)) {
             log_w("No valid voice audio recorded.");
             speakerDriver.playErrorTone();
             animationEngine.setEmotion(MascotEmotion::CONFUSED, 2000);
@@ -105,7 +117,7 @@ void voiceTaskFunc(void* parameter) {
             continue;
         }
 
-        // 2. Processing with Gemini 2.0 Flash API
+        // 2. Processing with Gemini 3.6 Flash API
         currentSystemState = SystemState::CALLING_GEMINI;
         uiManager.setSystemStatusText("Thinking...");
         animationEngine.setEmotion(MascotEmotion::THINKING);
@@ -117,7 +129,7 @@ void voiceTaskFunc(void* parameter) {
         if (!geminiSuccess || !aiResp.isSuccess) {
             log_e("Gemini Query Failed: %s", aiResp.errorMessage.c_str());
             speakerDriver.playErrorTone();
-            uiManager.setCardInfo("Error", "Could not reach Gemini", 3000);
+            uiManager.setCardInfo("Gemini Error", aiResp.errorMessage, 4000);
             animationEngine.setEmotion(MascotEmotion::SAD, 3000);
             uiManager.setSystemStatusText("Ready");
             currentSystemState = SystemState::STANDBY_IDLE;

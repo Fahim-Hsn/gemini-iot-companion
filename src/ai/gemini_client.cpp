@@ -3,7 +3,6 @@
 
 GeminiClient geminiClient;
 
-// Base64 lookup table
 static const char b64_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 GeminiClient::GeminiClient() : _isInitialized(false) {
@@ -15,7 +14,7 @@ GeminiClient::GeminiClient() : _isInitialized(false) {
 GeminiClient::~GeminiClient() {}
 
 bool GeminiClient::begin() {
-    _secureClient.setInsecure(); // Skip root CA verification for lightweight embedded HTTPS
+    _secureClient.setInsecure(); // Lightweight TLS without full CA chain
     _isInitialized = true;
     return true;
 }
@@ -93,9 +92,15 @@ bool GeminiClient::processTextQuery(const String& promptText, AIResponse* outRes
 bool GeminiClient::processAudioQuery(const uint8_t* pcmAudio, size_t audioSize, AIResponse* outResponse) {
     if (!pcmAudio || audioSize == 0 || !outResponse) return false;
 
-    log_i("Preparing Gemini multimodal audio payload (%u bytes PCM)...", (unsigned)audioSize);
+    // Cap audio size to 48KB (1.5 seconds) to ensure memory stability on ESP32-C6
+    if (audioSize > 48000) {
+        audioSize = 48000;
+    }
 
-    // Create a 44-byte WAV header for the raw 16kHz mono PCM
+    log_i("Preparing memory-safe Gemini audio payload (%u bytes PCM)... Free Heap: %u", 
+          (unsigned)audioSize, (unsigned)ESP.getFreeHeap());
+
+    // Encode WAV header + PCM in-place without giant intermediate allocations
     uint8_t wavHeader[44];
     uint32_t totalDataLen = audioSize;
     uint32_t totalFileLen = totalDataLen + 36;
@@ -120,20 +125,31 @@ bool GeminiClient::processAudioQuery(const uint8_t* pcmAudio, size_t audioSize, 
     memcpy(wavHeader + 36, "data", 4);
     memcpy(wavHeader + 40, &totalDataLen, 4);
 
-    // Allocate combined buffer for Base64 encoding
-    size_t totalWavSize = 44 + audioSize;
-    uint8_t* fullWav = (uint8_t*)malloc(totalWavSize);
-    if (!fullWav) {
-        log_e("Out of memory for full WAV packaging!");
-        outResponse->errorMessage = "Memory allocation failed";
-        return false;
+    // Build base64 directly: first 44 bytes header, then pcm samples
+    size_t totalBytes = 44 + audioSize;
+    String base64Audio;
+    base64Audio.reserve(((totalBytes + 2) / 3) * 4);
+
+    auto getByte = [&](size_t idx) -> uint8_t {
+        if (idx < 44) return wavHeader[idx];
+        return pcmAudio[idx - 44];
+    };
+
+    size_t i = 0;
+    while (i < totalBytes) {
+        uint32_t octet_a = i < totalBytes ? getByte(i++) : 0;
+        uint32_t octet_b = i < totalBytes ? getByte(i++) : 0;
+        uint32_t octet_c = i < totalBytes ? getByte(i++) : 0;
+
+        uint32_t triple = (octet_a << 16) + (octet_b << 8) + octet_c;
+
+        base64Audio += b64_table[(triple >> 18) & 0x3F];
+        base64Audio += b64_table[(triple >> 12) & 0x3F];
+        base64Audio += (i > totalBytes + 1) ? '=' : b64_table[(triple >> 6) & 0x3F];
+        base64Audio += (i > totalBytes) ? '=' : b64_table[triple & 0x3F];
     }
 
-    memcpy(fullWav, wavHeader, 44);
-    memcpy(fullWav + 44, pcmAudio, audioSize);
-
-    String base64Audio = base64EncodeAudio(fullWav, totalWavSize);
-    free(fullWav);
+    log_i("Base64 Audio created (%u chars). Free Heap: %u", (unsigned)base64Audio.length(), (unsigned)ESP.getFreeHeap());
 
     JsonDocument doc;
     JsonObject sysInst = doc["system_instruction"].to<JsonObject>();
@@ -164,9 +180,9 @@ bool GeminiClient::sendGeminiRequest(const String& jsonBody, AIResponse* outResp
 
     http.begin(_secureClient, url);
     http.addHeader("Content-Type", "application/json");
-    http.setTimeout(18000);
+    http.setTimeout(20000);
 
-    log_i("Sending request to Gemini (%s)...", GEMINI_MODEL);
+    log_i("Sending request to Gemini (%s)... Payload size: %u bytes", GEMINI_MODEL, (unsigned)jsonBody.length());
     int httpCode = http.POST(jsonBody);
 
     if (httpCode == HTTP_CODE_OK || httpCode == 200) {
@@ -177,7 +193,7 @@ bool GeminiClient::sendGeminiRequest(const String& jsonBody, AIResponse* outResp
         String err = http.getString();
         log_e("Gemini API Error (%d): %s", httpCode, err.c_str());
         outResponse->isSuccess = false;
-        outResponse->errorMessage = "Gemini Error: " + String(httpCode);
+        outResponse->errorMessage = "HTTP " + String(httpCode);
         http.end();
         return false;
     }
@@ -243,7 +259,6 @@ bool GeminiClient::parseStructuredResponse(const String& responseJson, AIRespons
     else if (emotionStr == "sleeping") outResponse->emotion = MascotEmotion::SLEEPING;
     else outResponse->emotion = MascotEmotion::IDLE;
 
-    // Display command
     JsonObject disp = parsedDoc["display"];
     if (!disp.isNull()) {
         String modeStr = disp["mode"] | "mascot";
@@ -266,7 +281,6 @@ bool GeminiClient::parseStructuredResponse(const String& responseJson, AIRespons
         else outResponse->displayCmd.theme = UITheme::MIDNIGHT_FOX;
     }
 
-    // Smart home command
     JsonObject home = parsedDoc["smart_home"];
     if (!home.isNull()) {
         outResponse->homeCmd.action = home["action"] | "none";
