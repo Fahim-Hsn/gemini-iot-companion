@@ -1,0 +1,25 @@
+# PlatformIO build artifacts
+.pio/
+.pioenvs/
+.piolibdeps/
+
+# Secrets & Private Environment Variables (DO NOT COMMIT)
+.env
+.env.local
+include/secrets.h
+
+# VS Code / IDE settings
+.vscode/
+.idea/
+*.swp
+*.bak
+*~
+
+# Python cache & temp
+__pycache__/
+*.pyc
+*.pyo
+
+# OS files
+.DS_Store
+Thumbs.db
