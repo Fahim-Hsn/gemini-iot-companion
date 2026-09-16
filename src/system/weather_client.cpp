@@ -1,7 +1,8 @@
 #include "weather_client.h"
+#include <WiFi.h>
+#include <HTTPClient.h>
 #include "display/ui_manager.h"
 #include "display/animation_engine.h"
-#include <HTTPClient.h>
 
 WeatherClient weatherClient;
 

@@ -3,6 +3,18 @@ import re
 
 Import("env")
 
+# Fix for Windows PlatformIO RISC-V toolchain PATH
+toolchain_base = os.path.expanduser(r"~/.platformio/packages/toolchain-riscv32-esp")
+tc_bin = os.path.join(toolchain_base, "bin")
+tc_sub_bin = os.path.join(toolchain_base, "riscv32-esp-elf", "bin")
+
+if os.path.exists(tc_bin):
+    env.PrependENVPath("PATH", tc_bin)
+    os.environ["PATH"] = tc_bin + os.pathsep + os.environ.get("PATH", "")
+if os.path.exists(tc_sub_bin):
+    env.PrependENVPath("PATH", tc_sub_bin)
+    os.environ["PATH"] = tc_sub_bin + os.pathsep + os.environ.get("PATH", "")
+
 # Path to .env and target secrets.h
 env_path = os.path.join(env.get("PROJECT_DIR"), ".env")
 secrets_header = os.path.join(env.get("PROJECT_DIR"), "include", "secrets.h")

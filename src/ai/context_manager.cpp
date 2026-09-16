@@ -1,4 +1,5 @@
 #include "context_manager.h"
+#include "config.h"
 #include <Preferences.h>
 
 ContextManager contextManager;

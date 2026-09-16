@@ -5,7 +5,7 @@ SpeakerDriver speakerDriver;
 
 SpeakerDriver::SpeakerDriver() 
     : _isInitialized(false), 
-      _i2sPort(I2S_NUM_1), 
+      _i2sPort(I2S_NUM_0), 
       _volume(85), 
       _volumeScale(0.85f), 
       _isPlaying(false), 
@@ -16,7 +16,10 @@ SpeakerDriver::~SpeakerDriver() {
 }
 
 bool SpeakerDriver::begin(uint32_t sampleRate) {
-    if (_isInitialized) return true;
+    if (_isInitialized) {
+        i2s_driver_uninstall(_i2sPort);
+        _isInitialized = false;
+    }
 
     i2s_config_t i2s_config = {
         .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_TX),
@@ -53,7 +56,7 @@ bool SpeakerDriver::begin(uint32_t sampleRate) {
     }
 
     _isInitialized = true;
-    log_i("MAX98357A Speaker initialized on I2S1 (BCLK:%d, LRC:%d, DIN:%d) @ %dHz",
+    log_i("MAX98357A Speaker initialized on I2S0 (BCLK:%d, LRC:%d, DIN:%d) @ %dHz",
           PIN_SPK_BCLK, PIN_SPK_LRC, PIN_SPK_DIN, sampleRate);
     return true;
 }

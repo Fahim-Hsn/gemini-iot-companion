@@ -80,9 +80,16 @@ void voiceTaskFunc(void* parameter) {
         animationEngine.setEmotion(MascotEmotion::LISTENING);
         speakerDriver.playWakeChime();
 
-        // 1. Record voice from INMP441 Microphone
+        // 1. Record voice from INMP441 Microphone (I2S RX Mode)
+        speakerDriver.end(); // Release I2S bus for mic input
+        micDriver.begin();
+
         size_t recordedBytes = 0;
         bool recordedOk = micDriver.startRecording(voiceRecordBuffer, AUDIO_BUF_SIZE, &recordedBytes, 6000);
+        micDriver.end(); // Done recording
+
+        // Re-enable speaker for feedback tones & TTS
+        speakerDriver.begin(SPK_SAMPLE_RATE);
 
         if (!recordedOk || recordedBytes < (MIC_SAMPLE_RATE * sizeof(int16_t) / 2)) {
             log_w("No valid voice audio recorded.");
