@@ -1,5 +1,5 @@
 #include "gemini_client.h"
-#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 
 GeminiClient geminiClient;
 
@@ -14,7 +14,6 @@ GeminiClient::GeminiClient() : _isInitialized(false) {
 GeminiClient::~GeminiClient() {}
 
 bool GeminiClient::begin() {
-    _secureClient.setInsecure(); // Lightweight TLS without full CA chain
     _isInitialized = true;
     return true;
 }
@@ -92,15 +91,14 @@ bool GeminiClient::processTextQuery(const String& promptText, AIResponse* outRes
 bool GeminiClient::processAudioQuery(const uint8_t* pcmAudio, size_t audioSize, AIResponse* outResponse) {
     if (!pcmAudio || audioSize == 0 || !outResponse) return false;
 
-    // Cap audio size to 48KB (1.5 seconds) to ensure memory stability on ESP32-C6
-    if (audioSize > 48000) {
-        audioSize = 48000;
+    // Cap audio size to 32KB (1.0 second) for rock solid speed and zero memory pressure
+    if (audioSize > 32000) {
+        audioSize = 32000;
     }
 
-    log_i("Preparing memory-safe Gemini audio payload (%u bytes PCM)... Free Heap: %u", 
-          (unsigned)audioSize, (unsigned)ESP.getFreeHeap());
+    log_i("Packaging Gemini audio (%u bytes PCM)... Free Heap: %u", (unsigned)audioSize, (unsigned)ESP.getFreeHeap());
 
-    // Encode WAV header + PCM in-place without giant intermediate allocations
+    // Build standard 44-byte WAV header
     uint8_t wavHeader[44];
     uint32_t totalDataLen = audioSize;
     uint32_t totalFileLen = totalDataLen + 36;
@@ -125,7 +123,6 @@ bool GeminiClient::processAudioQuery(const uint8_t* pcmAudio, size_t audioSize, 
     memcpy(wavHeader + 36, "data", 4);
     memcpy(wavHeader + 40, &totalDataLen, 4);
 
-    // Build base64 directly: first 44 bytes header, then pcm samples
     size_t totalBytes = 44 + audioSize;
     String base64Audio;
     base64Audio.reserve(((totalBytes + 2) / 3) * 4);
@@ -148,8 +145,6 @@ bool GeminiClient::processAudioQuery(const uint8_t* pcmAudio, size_t audioSize, 
         base64Audio += (i > totalBytes + 1) ? '=' : b64_table[(triple >> 6) & 0x3F];
         base64Audio += (i > totalBytes) ? '=' : b64_table[triple & 0x3F];
     }
-
-    log_i("Base64 Audio created (%u chars). Free Heap: %u", (unsigned)base64Audio.length(), (unsigned)ESP.getFreeHeap());
 
     JsonDocument doc;
     JsonObject sysInst = doc["system_instruction"].to<JsonObject>();
@@ -175,31 +170,91 @@ bool GeminiClient::processAudioQuery(const uint8_t* pcmAudio, size_t audioSize, 
 }
 
 bool GeminiClient::sendGeminiRequest(const String& jsonBody, AIResponse* outResponse) {
-    WiFiClientSecure secureClient;
-    secureClient.setInsecure();
-    secureClient.setTimeout(25);
+    if (!outResponse) return false;
 
-    HTTPClient http;
-    String url = "https://" + String(GEMINI_API_HOST) + "/v1beta/models/" + String(GEMINI_MODEL) + ":generateContent?key=" + String(GEMINI_API_KEY);
+    WiFiClientSecure client;
+    client.setInsecure(); // Skip certificate verification
+    client.setTimeout(25);
 
-    http.begin(secureClient, url);
-    http.addHeader("Content-Type", "application/json");
-    http.setTimeout(20000);
+    log_i("Opening direct TLS socket to %s:443 ... Free Heap: %u", GEMINI_API_HOST, (unsigned)ESP.getFreeHeap());
 
-    log_i("Sending request to Gemini (%s)... Payload size: %u bytes, Free Heap: %u", 
-          GEMINI_MODEL, (unsigned)jsonBody.length(), (unsigned)ESP.getFreeHeap());
-    int httpCode = http.POST(jsonBody);
+    if (!client.connect(GEMINI_API_HOST, 443)) {
+        log_e("Direct TLS socket connect failed to %s:443", GEMINI_API_HOST);
+        outResponse->isSuccess = false;
+        outResponse->errorMessage = "TLS Connect Fail";
+        return false;
+    }
 
-    if (httpCode == HTTP_CODE_OK || httpCode == 200) {
-        String responsePayload = http.getString();
-        http.end();
+    log_i("TLS Socket connected! Sending HTTP POST...");
+
+    String path = "/v1beta/models/" + String(GEMINI_MODEL) + ":generateContent?key=" + String(GEMINI_API_KEY);
+    
+    // Send HTTP Headers
+    client.print("POST " + path + " HTTP/1.1\r\n");
+    client.print("Host: " + String(GEMINI_API_HOST) + "\r\n");
+    client.print("Content-Type: application/json\r\n");
+    client.print("Content-Length: " + String(jsonBody.length()) + "\r\n");
+    client.print("Connection: close\r\n\r\n");
+
+    // Stream Payload in chunks to prevent socket buffer congestion
+    const char* buf = jsonBody.c_str();
+    size_t remaining = jsonBody.length();
+    size_t offset = 0;
+    while (remaining > 0 && client.connected()) {
+        size_t toWrite = (remaining > 2048) ? 2048 : remaining;
+        size_t written = client.write((const uint8_t*)(buf + offset), toWrite);
+        if (written == 0) break;
+        offset += written;
+        remaining -= written;
+    }
+
+    log_i("Payload sent (%u bytes). Waiting for Gemini response...", (unsigned)jsonBody.length());
+
+    // Read HTTP Status Line
+    uint32_t startWait = millis();
+    while (!client.available() && client.connected() && (millis() - startWait < 20000)) {
+        delay(10);
+    }
+
+    if (!client.available()) {
+        log_e("Gemini response timeout!");
+        client.stop();
+        outResponse->isSuccess = false;
+        outResponse->errorMessage = "Response Timeout";
+        return false;
+    }
+
+    String statusLine = client.readStringUntil('\n');
+    log_i("HTTP Status: %s", statusLine.c_str());
+
+    // Parse status code (e.g. "HTTP/1.1 200 OK")
+    int statusCode = 0;
+    int firstSpace = statusLine.indexOf(' ');
+    if (firstSpace > 0) {
+        statusCode = statusLine.substring(firstSpace + 1, firstSpace + 4).toInt();
+    }
+
+    // Skip HTTP Headers until double newline
+    while (client.connected()) {
+        String line = client.readStringUntil('\n');
+        if (line == "\r" || line.length() == 0) {
+            break; // Headers ended
+        }
+    }
+
+    // Read JSON response payload
+    String responsePayload = "";
+    while (client.available()) {
+        responsePayload += client.readString();
+    }
+    client.stop();
+
+    if (statusCode == 200) {
         return parseStructuredResponse(responsePayload, outResponse);
     } else {
-        String err = http.getString();
-        log_e("Gemini API Error (%d): %s", httpCode, err.c_str());
+        log_e("Gemini API Error (HTTP %d): %s", statusCode, responsePayload.c_str());
         outResponse->isSuccess = false;
-        outResponse->errorMessage = (httpCode == -1) ? "TLS/Conn Fail" : ("HTTP " + String(httpCode));
-        http.end();
+        outResponse->errorMessage = "HTTP " + String(statusCode);
         return false;
     }
 }
@@ -225,7 +280,7 @@ bool GeminiClient::parseStructuredResponse(const String& responseJson, AIRespons
     String innerText = String(textContent);
     innerText.trim();
 
-    // Clean any markdown formatting if present
+    // Clean markdown formatting if present
     if (innerText.startsWith("```json")) {
         innerText = innerText.substring(7);
     } else if (innerText.startsWith("```")) {
