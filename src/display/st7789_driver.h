@@ -16,8 +16,8 @@ public:
         {
             auto cfg = _bus_instance.config();
             cfg.spi_host = SPI2_HOST;
-            cfg.spi_mode = 0;
-            cfg.freq_write = 27000000; // 27MHz stable write
+            cfg.spi_mode = 3;           // Mode 3 is REQUIRED for CS-less ST7789 displays (CS tied to GND)
+            cfg.freq_write = 20000000;  // 20MHz for clean noise-free breadboard SPI
             cfg.freq_read  = 16000000;
             cfg.spi_3wire  = false;
             cfg.use_lock   = true;

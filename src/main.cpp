@@ -160,7 +160,14 @@ void voiceTaskFunc(void* parameter) {
 // Background System Monitoring Task (NTP, Smart Home, Weather)
 // -------------------------------------------------------------------------
 void systemTaskFunc(void* parameter) {
-    uint32_t lastWeatherCheck = 0;
+    // Initial non-blocking WiFi connect attempt
+    wifiManager.connect(WIFI_SSID, WIFI_PASSWORD);
+    if (wifiManager.isConnected()) {
+        ntpClient.begin();
+        weatherClient.fetchWeather(WEATHER_CITY);
+    }
+
+    uint32_t lastWeatherCheck = millis();
 
     while (true) {
         wifiManager.update();
@@ -168,7 +175,7 @@ void systemTaskFunc(void* parameter) {
         homeController.update();
 
         // Check weather every 15 minutes
-        if (wifiManager.isConnected() && (millis() - lastWeatherCheck > (15 * 60 * 1000) || lastWeatherCheck == 0)) {
+        if (wifiManager.isConnected() && (millis() - lastWeatherCheck > (15 * 60 * 1000))) {
             lastWeatherCheck = millis();
             weatherClient.fetchWeather(WEATHER_CITY);
         }
@@ -182,25 +189,23 @@ void systemTaskFunc(void* parameter) {
 // -------------------------------------------------------------------------
 void setup() {
     Serial.begin(115200);
-    delay(500);
+    delay(200);
     log_i("=================================================");
     log_i("  Starting Project Bondhu (Version %s)", PROJECT_BONDHU_VERSION);
     log_i("  Mascot: %s (Kitsune Fox), User: %s", MASCOT_NAME, DEFAULT_USER_NAME);
     log_i("=================================================");
 
-    // 1. Initialize Display & Animation Engine IMMEDIATELY so screen turns ON
+    // 1. Initialize Display IMMEDIATELY so pixels turn on at 0ms
     displayDriver.begin();
     animationEngine.begin();
     uiManager.begin();
-    uiManager.setSystemStatusText("Booting Bondhu...");
+    uiManager.setSystemStatusText("Bondhu Ready");
+    uiManager.setSpeechBubble("Hello! Ami Bondhu.", 5000);
 
-    // Initial immediate test draw
-    displayDriver.startWrite();
-    animationEngine.render(displayDriver.getLGFX(), 0.0f);
-    uiManager.renderOverlay(displayDriver.getLGFX());
-    displayDriver.endWrite();
+    // 2. Launch Display Task immediately at high priority
+    xTaskCreate(displayTaskFunc, "DisplayTask", STACK_SIZE_DISPLAY, NULL, TASK_PRIO_DISPLAY, &hDisplayTask);
 
-    // 2. Allocate Lean Audio Buffer (96KB) in internal RAM
+    // 3. Allocate Lean Audio Buffer (96KB) in internal RAM
     voiceRecordBuffer = (uint8_t*)malloc(AUDIO_BUF_SIZE);
     if (!voiceRecordBuffer) {
         log_w("Could not allocate 96KB audio buffer, trying 64KB fallback...");
@@ -208,34 +213,22 @@ void setup() {
     }
     log_i("Audio buffer allocated. Free Heap: %u bytes", (unsigned)ESP.getFreeHeap());
 
-    // 3. Configure Action Button
+    // 4. Configure Action Button
     pinMode(PIN_BUTTON_ACTION, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(PIN_BUTTON_ACTION), onActionButtonPressed, FALLING);
 
-    // 4. Initialize Audio Drivers
+    // 5. Initialize Audio & AI Drivers
     speakerDriver.begin(SPK_SAMPLE_RATE);
-    speakerDriver.playReadyBeep();
-
-    // 5. Initialize AI & Context Layer
     contextManager.begin();
     geminiClient.begin();
     ttsClient.begin();
 
-    // 6. Connect WiFi in background
-    wifiManager.connect(WIFI_SSID, WIFI_PASSWORD);
-    if (wifiManager.isConnected()) {
-        ntpClient.begin();
-    }
-
-    // 7. Launch Multi-Core FreeRTOS Tasks
-    xTaskCreate(displayTaskFunc, "DisplayTask", STACK_SIZE_DISPLAY, NULL, TASK_PRIO_DISPLAY, &hDisplayTask);
+    // 6. Launch Voice and Background System Tasks (Non-blocking)
     xTaskCreate(voiceTaskFunc, "VoiceTask", STACK_SIZE_NETWORK, NULL, TASK_PRIO_NETWORK, &hVoiceTask);
     xTaskCreate(systemTaskFunc, "SystemTask", STACK_SIZE_SYSTEM, NULL, TASK_PRIO_SYSTEM, &hSystemTask);
 
     currentSystemState = SystemState::STANDBY_IDLE;
-    uiManager.setSystemStatusText("Ready");
-    uiManager.setSpeechBubble("Hello! Ami Bondhu.", 4000);
-    log_i("Project Bondhu initialization completed! Free Heap: %u bytes", (unsigned)ESP.getFreeHeap());
+    log_i("Setup finished! Free Heap: %u bytes", (unsigned)ESP.getFreeHeap());
 }
 
 void loop() {
