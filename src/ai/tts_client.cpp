@@ -83,12 +83,16 @@ bool TTSClient::synthesize(const String& text, const String& langCode, uint8_t**
     String jsonBody;
     serializeJson(doc, jsonBody);
 
+    WiFiClientSecure secureClient;
+    secureClient.setInsecure();
+    secureClient.setTimeout(20);
+
     HTTPClient http;
     String url = "https://" + String(GOOGLE_TTS_HOST) + "/v1/text:synthesize?key=" + String(GOOGLE_TTS_API_KEY);
 
-    http.begin(_secureClient, url);
+    http.begin(secureClient, url);
     http.addHeader("Content-Type", "application/json");
-    http.setTimeout(12000);
+    http.setTimeout(15000);
 
     log_i("Calling Google Cloud TTS for [%s]...", voiceLang.c_str());
     int httpCode = http.POST(jsonBody);

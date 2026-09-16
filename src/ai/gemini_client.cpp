@@ -175,14 +175,19 @@ bool GeminiClient::processAudioQuery(const uint8_t* pcmAudio, size_t audioSize, 
 }
 
 bool GeminiClient::sendGeminiRequest(const String& jsonBody, AIResponse* outResponse) {
+    WiFiClientSecure secureClient;
+    secureClient.setInsecure();
+    secureClient.setTimeout(25);
+
     HTTPClient http;
     String url = "https://" + String(GEMINI_API_HOST) + "/v1beta/models/" + String(GEMINI_MODEL) + ":generateContent?key=" + String(GEMINI_API_KEY);
 
-    http.begin(_secureClient, url);
+    http.begin(secureClient, url);
     http.addHeader("Content-Type", "application/json");
     http.setTimeout(20000);
 
-    log_i("Sending request to Gemini (%s)... Payload size: %u bytes", GEMINI_MODEL, (unsigned)jsonBody.length());
+    log_i("Sending request to Gemini (%s)... Payload size: %u bytes, Free Heap: %u", 
+          GEMINI_MODEL, (unsigned)jsonBody.length(), (unsigned)ESP.getFreeHeap());
     int httpCode = http.POST(jsonBody);
 
     if (httpCode == HTTP_CODE_OK || httpCode == 200) {
@@ -193,7 +198,7 @@ bool GeminiClient::sendGeminiRequest(const String& jsonBody, AIResponse* outResp
         String err = http.getString();
         log_e("Gemini API Error (%d): %s", httpCode, err.c_str());
         outResponse->isSuccess = false;
-        outResponse->errorMessage = "HTTP " + String(httpCode);
+        outResponse->errorMessage = (httpCode == -1) ? "TLS/Conn Fail" : ("HTTP " + String(httpCode));
         http.end();
         return false;
     }

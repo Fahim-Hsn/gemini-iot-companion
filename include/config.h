@@ -104,8 +104,8 @@
 #define TASK_PRIO_NETWORK       3     // High-medium for Gemini & TTS HTTPS
 #define TASK_PRIO_SYSTEM        1     // Background routines, timers
 
-#define STACK_SIZE_AUDIO_IN     (8 * 1024)
-#define STACK_SIZE_AUDIO_OUT    (8 * 1024)
-#define STACK_SIZE_DISPLAY      (8 * 1024)
-#define STACK_SIZE_NETWORK      (12 * 1024)
+#define STACK_SIZE_AUDIO_IN     (6 * 1024)
+#define STACK_SIZE_AUDIO_OUT    (6 * 1024)
+#define STACK_SIZE_DISPLAY      (6 * 1024)
+#define STACK_SIZE_NETWORK      (16 * 1024)
 #define STACK_SIZE_SYSTEM       (4 * 1024)
