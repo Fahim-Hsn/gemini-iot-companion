@@ -88,10 +88,65 @@ bool GeminiClient::processTextQuery(const String& promptText, AIResponse* outRes
     return sendGeminiRequest(jsonBody, outResponse);
 }
 
+static String readHttpResponsePayload(WiFiClientSecure& client, bool isChunked, int contentLength) {
+    String payload = "";
+
+    if (isChunked) {
+        log_i("Reading chunked HTTP response from Gemini...");
+        uint32_t startWait = millis();
+        while ((client.connected() || client.available()) && (millis() - startWait < 15000)) {
+            String sizeLine = client.readStringUntil('\n');
+            sizeLine.trim();
+            if (sizeLine.length() == 0) continue;
+
+            size_t chunkSize = strtoul(sizeLine.c_str(), NULL, 16);
+            if (chunkSize == 0) {
+                // End of chunked stream
+                break;
+            }
+
+            size_t bytesRead = 0;
+            while (bytesRead < chunkSize && (client.connected() || client.available())) {
+                if (client.available()) {
+                    char c = client.read();
+                    payload += c;
+                    bytesRead++;
+                } else {
+                    delay(2);
+                }
+            }
+            // Read trailing CRLF
+            client.readStringUntil('\n');
+        }
+    } else if (contentLength > 0) {
+        log_i("Reading %d bytes HTTP response from Gemini...", contentLength);
+        payload.reserve(contentLength + 16);
+        uint32_t startWait = millis();
+        while ((int)payload.length() < contentLength && (millis() - startWait < 15000)) {
+            while (client.available()) {
+                payload += client.readString();
+            }
+            delay(10);
+        }
+    } else {
+        // Fallback: Read until EOF / connection closed
+        uint32_t startWait = millis();
+        while ((client.connected() || client.available()) && (millis() - startWait < 15000)) {
+            while (client.available()) {
+                payload += client.readString();
+            }
+            delay(10);
+        }
+    }
+
+    log_i("HTTP Payload complete (%u bytes).", (unsigned)payload.length());
+    return payload;
+}
+
 bool GeminiClient::processAudioQuery(const uint8_t* pcmAudio, size_t audioSize, AIResponse* outResponse) {
     if (!pcmAudio || audioSize == 0 || !outResponse) return false;
 
-    // Cap audio size to 32KB (1.0 sec) / 48KB (1.5 sec) for rock-solid stability
+    // Cap audio size to 32KB (1.0 sec) for rock-solid stability
     if (audioSize > 32000) {
         audioSize = 32000;
     }
@@ -228,19 +283,27 @@ bool GeminiClient::processAudioQuery(const uint8_t* pcmAudio, size_t audioSize, 
         statusCode = statusLine.substring(firstSpace + 1, firstSpace + 4).toInt();
     }
 
-    // Skip Headers
+    // Parse HTTP Headers
+    bool isChunked = false;
+    int contentLength = -1;
     while (client.connected()) {
         String line = client.readStringUntil('\n');
-        if (line == "\r" || line.length() == 0) {
-            break;
+        line.trim();
+        if (line.length() == 0) {
+            break; // Headers ended
+        }
+        String lowerLine = line;
+        lowerLine.toLowerCase();
+        if (lowerLine.startsWith("transfer-encoding:") && lowerLine.indexOf("chunked") >= 0) {
+            isChunked = true;
+        }
+        if (lowerLine.startsWith("content-length:")) {
+            contentLength = line.substring(15).toInt();
         }
     }
 
-    // Read Response Payload
-    String responsePayload = "";
-    while (client.available()) {
-        responsePayload += client.readString();
-    }
+    // Read decoded Response Payload
+    String responsePayload = readHttpResponsePayload(client, isChunked, contentLength);
     client.stop();
 
     if (statusCode == 200) {
@@ -318,19 +381,27 @@ bool GeminiClient::sendGeminiRequest(const String& jsonBody, AIResponse* outResp
         statusCode = statusLine.substring(firstSpace + 1, firstSpace + 4).toInt();
     }
 
-    // Skip HTTP Headers until double newline
+    // Parse HTTP Headers
+    bool isChunked = false;
+    int contentLength = -1;
     while (client.connected()) {
         String line = client.readStringUntil('\n');
-        if (line == "\r" || line.length() == 0) {
+        line.trim();
+        if (line.length() == 0) {
             break; // Headers ended
+        }
+        String lowerLine = line;
+        lowerLine.toLowerCase();
+        if (lowerLine.startsWith("transfer-encoding:") && lowerLine.indexOf("chunked") >= 0) {
+            isChunked = true;
+        }
+        if (lowerLine.startsWith("content-length:")) {
+            contentLength = line.substring(15).toInt();
         }
     }
 
     // Read JSON response payload
-    String responsePayload = "";
-    while (client.available()) {
-        responsePayload += client.readString();
-    }
+    String responsePayload = readHttpResponsePayload(client, isChunked, contentLength);
     client.stop();
 
     if (statusCode == 200) {
@@ -347,13 +418,31 @@ bool GeminiClient::parseStructuredResponse(const String& responseJson, AIRespons
     JsonDocument doc;
     DeserializationError error = deserializeJson(doc, responseJson);
     if (error) {
-        log_e("Failed to parse Gemini API JSON: %s", error.c_str());
+        log_e("Failed to parse Gemini API JSON: %s. Payload: %s", error.c_str(), responseJson.c_str());
         outResponse->isSuccess = false;
         outResponse->errorMessage = "JSON parse error";
         return false;
     }
 
-    const char* textContent = doc["candidates"][0]["content"]["parts"][0]["text"];
+    // Check for API-level error object
+    if (doc["error"].is<JsonObject>()) {
+        const char* errMsg = doc["error"]["message"];
+        log_e("Gemini API error payload: %s", errMsg ? errMsg : "Unknown");
+        outResponse->isSuccess = false;
+        outResponse->errorMessage = errMsg ? String(errMsg).substring(0, 18) : "API Error";
+        return false;
+    }
+
+    // Extract Candidate
+    JsonArray candidates = doc["candidates"].as<JsonArray>();
+    if (candidates.isNull() || candidates.size() == 0) {
+        log_e("No candidates in Gemini response!");
+        outResponse->isSuccess = false;
+        outResponse->errorMessage = "No Candidate";
+        return false;
+    }
+
+    const char* textContent = candidates[0]["content"]["parts"][0]["text"];
     if (!textContent) {
         log_e("No text part in Gemini candidate!");
         outResponse->isSuccess = false;
