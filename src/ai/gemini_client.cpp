@@ -91,14 +91,15 @@ bool GeminiClient::processTextQuery(const String& promptText, AIResponse* outRes
 bool GeminiClient::processAudioQuery(const uint8_t* pcmAudio, size_t audioSize, AIResponse* outResponse) {
     if (!pcmAudio || audioSize == 0 || !outResponse) return false;
 
-    // Cap audio size to 32KB (1.0 second) for rock solid speed and zero memory pressure
+    // Cap audio size to 32KB (1.0 sec) / 48KB (1.5 sec) for rock-solid stability
     if (audioSize > 32000) {
         audioSize = 32000;
     }
 
-    log_i("Packaging Gemini audio (%u bytes PCM)... Free Heap: %u", (unsigned)audioSize, (unsigned)ESP.getFreeHeap());
+    log_i("Preparing Gemini voice query (%u bytes)... Free Heap: %u, Max Alloc: %u", 
+          (unsigned)audioSize, (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap());
 
-    // Build standard 44-byte WAV header
+    // 1. Build standard 44-byte WAV header
     uint8_t wavHeader[44];
     uint32_t totalDataLen = audioSize;
     uint32_t totalFileLen = totalDataLen + 36;
@@ -123,65 +124,148 @@ bool GeminiClient::processAudioQuery(const uint8_t* pcmAudio, size_t audioSize, 
     memcpy(wavHeader + 36, "data", 4);
     memcpy(wavHeader + 40, &totalDataLen, 4);
 
-    size_t totalBytes = 44 + audioSize;
-    String base64Audio;
-    base64Audio.reserve(((totalBytes + 2) / 3) * 4);
+    size_t totalWavBytes = 44 + audioSize;
+    size_t base64Len = ((totalWavBytes + 2) / 3) * 4;
 
-    auto getByte = [&](size_t idx) -> uint8_t {
+    auto getWavByte = [&](size_t idx) -> uint8_t {
         if (idx < 44) return wavHeader[idx];
         return pcmAudio[idx - 44];
     };
 
-    size_t i = 0;
-    while (i < totalBytes) {
-        uint32_t octet_a = i < totalBytes ? getByte(i++) : 0;
-        uint32_t octet_b = i < totalBytes ? getByte(i++) : 0;
-        uint32_t octet_c = i < totalBytes ? getByte(i++) : 0;
-
-        uint32_t triple = (octet_a << 16) + (octet_b << 8) + octet_c;
-
-        base64Audio += b64_table[(triple >> 18) & 0x3F];
-        base64Audio += b64_table[(triple >> 12) & 0x3F];
-        base64Audio += (i > totalBytes + 1) ? '=' : b64_table[(triple >> 6) & 0x3F];
-        base64Audio += (i > totalBytes) ? '=' : b64_table[triple & 0x3F];
+    // System instruction string
+    String sysText = buildSystemInstruction();
+    String escapedSys = "";
+    escapedSys.reserve(sysText.length() + 32);
+    for (size_t i = 0; i < sysText.length(); i++) {
+        char c = sysText[i];
+        if (c == '"') escapedSys += "\\\"";
+        else if (c == '\\') escapedSys += "\\\\";
+        else if (c == '\n') escapedSys += "\\n";
+        else if (c == '\r') escapedSys += "\\r";
+        else if (c == '\t') escapedSys += "\\t";
+        else escapedSys += c;
     }
 
-    JsonDocument doc;
-    JsonObject sysInst = doc["system_instruction"].to<JsonObject>();
-    JsonObject sysPart = sysInst["parts"].to<JsonArray>().add<JsonObject>();
-    sysPart["text"] = buildSystemInstruction();
+    String jsonPrefix = "{\"system_instruction\":{\"parts\":[{\"text\":\"" + escapedSys + "\"}]},\"contents\":[{\"role\":\"user\",\"parts\":[{\"inline_data\":{\"mime_type\":\"audio/wav\",\"data\":\"";
+    String jsonSuffix = "\"}},{\"text\":\"Listen to my voice audio and respond according to instructions.\"}]}]}";
 
-    JsonObject content = doc["contents"].to<JsonArray>().add<JsonObject>();
-    content["role"] = "user";
-    JsonArray parts = content["parts"].to<JsonArray>();
+    size_t totalPayloadLen = jsonPrefix.length() + base64Len + jsonSuffix.length();
 
-    JsonObject audioPart = parts.add<JsonObject>();
-    JsonObject inlineData = audioPart["inline_data"].to<JsonObject>();
-    inlineData["mime_type"] = "audio/wav";
-    inlineData["data"] = base64Audio;
+    // 2. Open Secure TLS Socket directly with SNI Hostname
+    WiFiClientSecure client;
+    client.setInsecure(); // Skip cert chain for embedded speed
+    client.setTimeout(20);
 
-    JsonObject textPart = parts.add<JsonObject>();
-    textPart["text"] = "Listen to my voice audio and respond according to instructions.";
+    log_i("Connecting TLS to %s:443 ... Free Heap: %u", GEMINI_API_HOST, (unsigned)ESP.getFreeHeap());
 
-    String jsonBody;
-    serializeJson(doc, jsonBody);
+    if (!client.connect(GEMINI_API_HOST, 443)) {
+        log_e("TLS socket connect failed to %s:443", GEMINI_API_HOST);
+        outResponse->isSuccess = false;
+        outResponse->errorMessage = "TLS connect Fail";
+        return false;
+    }
 
-    return sendGeminiRequest(jsonBody, outResponse);
+    log_i("TLS Connected! Streaming HTTP POST (%u bytes)...", (unsigned)totalPayloadLen);
+
+    String path = "/v1beta/models/" + String(GEMINI_MODEL) + ":generateContent?key=" + String(GEMINI_API_KEY);
+    client.print("POST " + path + " HTTP/1.1\r\n");
+    client.print("Host: " + String(GEMINI_API_HOST) + "\r\n");
+    client.print("Content-Type: application/json\r\n");
+    client.print("Content-Length: " + String(totalPayloadLen) + "\r\n");
+    client.print("Connection: close\r\n\r\n");
+
+    // Send JSON Prefix
+    client.print(jsonPrefix);
+
+    // Stream Base64 audio directly in small 768-byte chunks without allocating strings
+    char b64Chunk[769];
+    size_t wavPos = 0;
+    while (wavPos < totalWavBytes && client.connected()) {
+        size_t chunkRaw = 0;
+        size_t chunkOut = 0;
+        while (chunkRaw < 576 && wavPos < totalWavBytes) {
+            uint32_t octet_a = (wavPos < totalWavBytes) ? getWavByte(wavPos++) : 0;
+            uint32_t octet_b = (wavPos < totalWavBytes) ? getWavByte(wavPos++) : 0;
+            uint32_t octet_c = (wavPos < totalWavBytes) ? getWavByte(wavPos++) : 0;
+            chunkRaw += 3;
+
+            uint32_t triple = (octet_a << 16) + (octet_b << 8) + octet_c;
+
+            b64Chunk[chunkOut++] = b64_table[(triple >> 18) & 0x3F];
+            b64Chunk[chunkOut++] = b64_table[(triple >> 12) & 0x3F];
+            b64Chunk[chunkOut++] = (wavPos > totalWavBytes + 1) ? '=' : b64_table[(triple >> 6) & 0x3F];
+            b64Chunk[chunkOut++] = (wavPos > totalWavBytes) ? '=' : b64_table[triple & 0x3F];
+        }
+        b64Chunk[chunkOut] = '\0';
+        client.write((const uint8_t*)b64Chunk, chunkOut);
+    }
+
+    // Send JSON Suffix
+    client.print(jsonSuffix);
+
+    log_i("Payload streamed. Waiting for Gemini response...");
+
+    // Read HTTP Status Line
+    uint32_t startWait = millis();
+    while (!client.available() && client.connected() && (millis() - startWait < 20000)) {
+        delay(10);
+    }
+
+    if (!client.available()) {
+        log_e("Gemini response timeout!");
+        client.stop();
+        outResponse->isSuccess = false;
+        outResponse->errorMessage = "Response Timeout";
+        return false;
+    }
+
+    String statusLine = client.readStringUntil('\n');
+    log_i("HTTP Status: %s", statusLine.c_str());
+
+    int statusCode = 0;
+    int firstSpace = statusLine.indexOf(' ');
+    if (firstSpace > 0) {
+        statusCode = statusLine.substring(firstSpace + 1, firstSpace + 4).toInt();
+    }
+
+    // Skip Headers
+    while (client.connected()) {
+        String line = client.readStringUntil('\n');
+        if (line == "\r" || line.length() == 0) {
+            break;
+        }
+    }
+
+    // Read Response Payload
+    String responsePayload = "";
+    while (client.available()) {
+        responsePayload += client.readString();
+    }
+    client.stop();
+
+    if (statusCode == 200) {
+        return parseStructuredResponse(responsePayload, outResponse);
+    } else {
+        log_e("Gemini API Error (HTTP %d): %s", statusCode, responsePayload.c_str());
+        outResponse->isSuccess = false;
+        outResponse->errorMessage = "HTTP " + String(statusCode);
+        return false;
+    }
 }
 
 bool GeminiClient::sendGeminiRequest(const String& jsonBody, AIResponse* outResponse) {
     if (!outResponse) return false;
 
     WiFiClientSecure client;
-    client.setInsecure(); // Skip certificate verification
-    client.setTimeout(25);
+    client.setInsecure();
+    client.setTimeout(20);
 
-    log_i("Opening direct TLS socket to %s:443 ... Free Heap: %u", GEMINI_API_HOST, (unsigned)ESP.getFreeHeap());
+    log_i("Connecting TLS to %s:443 ... Free Heap: %u", GEMINI_API_HOST, (unsigned)ESP.getFreeHeap());
 
     if (!client.connect(GEMINI_API_HOST, 443)) {
-        log_e("Direct TLS socket connect failed to %s:443", GEMINI_API_HOST);
+        log_e("TLS socket connect failed to %s:443", GEMINI_API_HOST);
         outResponse->isSuccess = false;
-        outResponse->errorMessage = "TLS Connect Fail";
+        outResponse->errorMessage = "TLS connect Fail";
         return false;
     }
 
@@ -196,12 +280,12 @@ bool GeminiClient::sendGeminiRequest(const String& jsonBody, AIResponse* outResp
     client.print("Content-Length: " + String(jsonBody.length()) + "\r\n");
     client.print("Connection: close\r\n\r\n");
 
-    // Stream Payload in chunks to prevent socket buffer congestion
+    // Stream Payload in 1KB chunks
     const char* buf = jsonBody.c_str();
     size_t remaining = jsonBody.length();
     size_t offset = 0;
     while (remaining > 0 && client.connected()) {
-        size_t toWrite = (remaining > 2048) ? 2048 : remaining;
+        size_t toWrite = (remaining > 1024) ? 1024 : remaining;
         size_t written = client.write((const uint8_t*)(buf + offset), toWrite);
         if (written == 0) break;
         offset += written;

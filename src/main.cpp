@@ -18,8 +18,8 @@
 static volatile SystemState currentSystemState = SystemState::BOOTING;
 static volatile bool triggerVoiceChat = false;
 
-// Audio buffer in internal RAM: 3 seconds of 16kHz 16-bit mono audio (96 KB)
-#define AUDIO_BUF_SIZE (MIC_SAMPLE_RATE * sizeof(int16_t) * 3)
+// Audio buffer in internal RAM: 1 second of 16kHz 16-bit mono audio (32 KB)
+#define AUDIO_BUF_SIZE (MIC_SAMPLE_RATE * sizeof(int16_t) * 1)
 static uint8_t* voiceRecordBuffer = nullptr;
 
 // FreeRTOS Task Handles
