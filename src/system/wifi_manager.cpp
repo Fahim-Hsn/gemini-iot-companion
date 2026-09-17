@@ -14,6 +14,8 @@ bool WiFiManager::connect(const char* ssid, const char* password) {
     uiManager.setSystemStatusText("Connecting WiFi...");
 
     WiFi.mode(WIFI_STA);
+    WiFi.setSleep(false); // Disable WiFi power save to prevent packet drop during TLS handshake
+    WiFi.setTxPower(WIFI_POWER_19_5dBm); // Maximum WiFi transmit power
     WiFi.begin(ssid, password);
 
     uint32_t start = millis();

@@ -12,8 +12,14 @@ public:
 
     bool begin();
     
-    // Synthesize speech from text and play directly via speaker driver
+    // Synthesize speech from text and stream directly to speaker driver
     bool speakText(const String& text, const String& langCode = "bn");
+
+    // Google Cloud Text-to-Speech
+    bool speakGoogleCloudTTS(const String& text, const String& langCode = "bn");
+
+    // VoiceRSS Free Human Voice (16kHz WAV streaming)
+    bool speakVoiceRSS(const String& text, const String& langCode = "bn");
 
     // Synthesize text and return raw PCM buffer
     bool synthesize(const String& text, const String& langCode, uint8_t** outPCM, size_t* outPCMSize, uint32_t* outSampleRate);

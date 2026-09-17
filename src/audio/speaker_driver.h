@@ -15,6 +15,11 @@ public:
     // Play PCM audio buffer (16-bit Mono/Stereo)
     bool playPCM(const uint8_t* pcmData, size_t dataSize, uint32_t sampleRate = 24000, bool isMono = true);
 
+    // Streaming PCM playback (low RAM streaming from TTS)
+    void beginStreaming(uint32_t sampleRate = 24000);
+    void playPCMChunk(const int16_t* monoSamples, size_t sampleCount);
+    void endStreaming();
+
     // Write raw chunk to I2S buffer
     size_t writeChunk(const int16_t* samples, size_t sampleCount);
 
@@ -25,7 +30,7 @@ public:
     void playSuccessChime();
     void playErrorTone();
 
-    // Cute Mascot Syllable Voice Synthesizer (Zero-latency offline Animal Crossing style)
+    // Cute Mascot Syllable Voice Synthesizer (Zero-latency offline Animal Crossing / Pokémon style)
     void speakMascotVoice(const String& text);
 
     // Volume configuration (0 to 100)
@@ -45,6 +50,7 @@ private:
     float _volumeScale;
     volatile bool _isPlaying;
     volatile float _currentMouthLevel;
+    uint32_t _currentSampleRate;
 
     void playTone(float frequency, uint32_t durationMs, float volume = 0.8f);
 };

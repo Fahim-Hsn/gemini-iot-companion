@@ -18,8 +18,8 @@
 static volatile SystemState currentSystemState = SystemState::BOOTING;
 static volatile bool triggerVoiceChat = false;
 
-// Audio buffer in internal RAM: 1 second of 16kHz 16-bit mono audio (32 KB)
-#define AUDIO_BUF_SIZE (MIC_SAMPLE_RATE * sizeof(int16_t) * 1)
+// Audio buffer in internal RAM: 4 seconds of 16kHz 16-bit mono audio (128 KB)
+#define AUDIO_BUF_SIZE (MIC_SAMPLE_RATE * sizeof(int16_t) * 4)
 static uint8_t* voiceRecordBuffer = nullptr;
 
 // FreeRTOS Task Handles
@@ -101,7 +101,7 @@ void voiceTaskFunc(void* parameter) {
 
         size_t recordedBytes = 0;
         if (voiceRecordBuffer) {
-            micDriver.startRecording(voiceRecordBuffer, AUDIO_BUF_SIZE, &recordedBytes, 2500);
+            micDriver.startRecording(voiceRecordBuffer, AUDIO_BUF_SIZE, &recordedBytes, MIC_RECORD_MAX_SEC * 1000);
         }
         micDriver.end(); // Done recording
 
@@ -154,16 +154,23 @@ void voiceTaskFunc(void* parameter) {
             homeController.executeCommand(aiResp.homeCmd, &feedback);
         }
 
-        // 5. Generate & Play Voice Response (TTS)
+        // 5. Generate & Play Voice Response (TTS with automatic Mascot Synth fallback)
         currentSystemState = SystemState::SPEAKING_RESPONSE;
         uiManager.setSystemStatusText("Speaking...");
         
         speakerDriver.begin(SPK_SAMPLE_RATE);
-        speakerDriver.speakMascotVoice(aiResp.speechText);
+        log_i("Attempting Cloud TTS for response: '%s'", aiResp.speechText.c_str());
+        bool spoken = ttsClient.speakText(aiResp.speechText, aiResp.languageCode);
+        if (!spoken) {
+            log_i("Cloud TTS unavailable or failed, speaking with Mascot Syllable Synthesizer...");
+            speakerDriver.begin(SPK_SAMPLE_RATE);
+            speakerDriver.speakMascotVoice(aiResp.speechText);
+        }
 
         // Finished turn
         uiManager.setSystemStatusText("Ready");
         currentSystemState = SystemState::STANDBY_IDLE;
+
         vTaskDelay(pdMS_TO_TICKS(500));
     }
 }

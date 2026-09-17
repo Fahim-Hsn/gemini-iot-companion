@@ -9,7 +9,8 @@ SpeakerDriver::SpeakerDriver()
       _volume(85), 
       _volumeScale(0.85f), 
       _isPlaying(false), 
-      _currentMouthLevel(0.0f) {}
+      _currentMouthLevel(0.0f),
+      _currentSampleRate(SPK_SAMPLE_RATE) {}
 
 SpeakerDriver::~SpeakerDriver() {
     end();
@@ -19,6 +20,8 @@ bool SpeakerDriver::begin(uint32_t sampleRate) {
     if (_isInitialized) {
         end();
     }
+
+    _currentSampleRate = sampleRate;
 
     // Reset GPIO pads to clean hardware state before I2S assignment
     gpio_reset_pin((gpio_num_t)PIN_SPK_BCLK);
@@ -61,13 +64,15 @@ bool SpeakerDriver::begin(uint32_t sampleRate) {
 
     i2s_zero_dma_buffer(_i2sPort);
     _isInitialized = true;
-    log_i("MAX98357A Speaker initialized on I2S0 (BCLK:%d, LRC:%d, DIN:%d) @ %dHz",
-          PIN_SPK_BCLK, PIN_SPK_LRC, PIN_SPK_DIN, sampleRate);
+    log_i("MAX98357A Speaker initialized on I2S0 (BCLK:%d, LRC:%d, DIN:%d) @ %uHz",
+          PIN_SPK_BCLK, PIN_SPK_LRC, PIN_SPK_DIN, (unsigned)sampleRate);
     return true;
 }
 
 void SpeakerDriver::end() {
     if (_isInitialized) {
+        _isPlaying = false;
+        _currentMouthLevel = 0.0f;
         i2s_zero_dma_buffer(_i2sPort);
         i2s_driver_uninstall(_i2sPort);
         _isInitialized = false;
@@ -107,49 +112,85 @@ size_t SpeakerDriver::writeChunk(const int16_t* samples, size_t sampleCount) {
     return 0;
 }
 
-bool SpeakerDriver::playPCM(const uint8_t* pcmData, size_t dataSize, uint32_t sampleRate, bool isMono) {
-    if (!_isInitialized || !pcmData || dataSize == 0) return false;
-
-    // Adjust I2S clock if sample rate changes
-    i2s_set_clk(_i2sPort, sampleRate, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
-
+void SpeakerDriver::beginStreaming(uint32_t sampleRate) {
+    if (!_isInitialized) {
+        begin(sampleRate);
+    }
+    if (_currentSampleRate != sampleRate) {
+        i2s_set_clk(_i2sPort, sampleRate, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
+        _currentSampleRate = sampleRate;
+    }
     _isPlaying = true;
-    const size_t CHUNK_SIZE = 512;
-    int16_t stereoBuffer[CHUNK_SIZE * 2];
-    const int16_t* pcm16 = (const int16_t*)pcmData;
-    size_t totalSamples = dataSize / sizeof(int16_t);
+    _currentMouthLevel = 0.0f;
+}
 
-    for (size_t i = 0; i < totalSamples && _isPlaying; i += CHUNK_SIZE) {
-        size_t samplesThisBlock = (i + CHUNK_SIZE <= totalSamples) ? CHUNK_SIZE : (totalSamples - i);
+void SpeakerDriver::playPCMChunk(const int16_t* monoSamples, size_t sampleCount) {
+    if (!_isInitialized || !monoSamples || sampleCount == 0 || !_isPlaying) return;
+
+    const size_t MAX_BLOCK = 256;
+    int16_t stereoBuffer[MAX_BLOCK * 2];
+
+    for (size_t i = 0; i < sampleCount && _isPlaying; i += MAX_BLOCK) {
+        size_t n = (i + MAX_BLOCK <= sampleCount) ? MAX_BLOCK : (sampleCount - i);
         double energyAcc = 0.0;
 
-        for (size_t j = 0; j < samplesThisBlock; j++) {
-            int16_t original = pcm16[i + j];
+        for (size_t j = 0; j < n; j++) {
+            int16_t original = monoSamples[i + j];
             int16_t scaled = (int16_t)(original * _volumeScale);
 
-            stereoBuffer[j * 2] = scaled;     // Left
+            stereoBuffer[j * 2]     = scaled; // Left
             stereoBuffer[j * 2 + 1] = scaled; // Right
 
             energyAcc += (double)(scaled * scaled);
         }
 
-        // Calculate live amplitude for real-time lip sync animation
-        float rms = (float)sqrt(energyAcc / (double)samplesThisBlock);
+        // Live mouth amplitude tracking
+        float rms = (float)sqrt(energyAcc / (double)n);
         _currentMouthLevel = (rms / 8000.0f);
         if (_currentMouthLevel > 1.0f) _currentMouthLevel = 1.0f;
 
         size_t bytesWritten = 0;
-        i2s_write(_i2sPort, (const void*)stereoBuffer, samplesThisBlock * 2 * sizeof(int16_t), &bytesWritten, portMAX_DELAY);
+        i2s_write(_i2sPort, (const void*)stereoBuffer, n * 2 * sizeof(int16_t), &bytesWritten, portMAX_DELAY);
     }
+}
 
+void SpeakerDriver::endStreaming() {
     _isPlaying = false;
     _currentMouthLevel = 0.0f;
-    i2s_zero_dma_buffer(_i2sPort);
+    if (_isInitialized) {
+        i2s_zero_dma_buffer(_i2sPort);
+    }
+}
+
+bool SpeakerDriver::playPCM(const uint8_t* pcmData, size_t dataSize, uint32_t sampleRate, bool isMono) {
+    if (!_isInitialized || !pcmData || dataSize == 0) return false;
+
+    // Detect and skip 44-byte WAV header if present
+    size_t offset = 0;
+    if (dataSize >= 44 && memcmp(pcmData, "RIFF", 4) == 0 && memcmp(pcmData + 8, "WAVE", 4) == 0) {
+        offset = 44;
+    }
+
+    size_t effectiveSize = dataSize - offset;
+    const int16_t* pcm16 = (const int16_t*)(pcmData + offset);
+    size_t totalSamples = effectiveSize / sizeof(int16_t);
+
+    beginStreaming(sampleRate);
+    playPCMChunk(pcm16, totalSamples);
+    endStreaming();
     return true;
 }
 
 void SpeakerDriver::playTone(float frequency, uint32_t durationMs, float volume) {
     if (!_isInitialized) return;
+
+    if (_currentSampleRate != 24000) {
+        i2s_set_clk(_i2sPort, 24000, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_STEREO);
+        _currentSampleRate = 24000;
+    }
+
+    bool outerPlaying = _isPlaying;
+    _isPlaying = true;
 
     uint32_t sampleRate = 24000;
     size_t totalSamples = (sampleRate * durationMs) / 1000;
@@ -157,13 +198,11 @@ void SpeakerDriver::playTone(float frequency, uint32_t durationMs, float volume)
     int16_t buffer[CHUNK * 2];
 
     float phase = 0.0f;
-    float phaseIncrement = (2.0f * M_PI * frequency) / (float)sampleRate;
+    float phaseIncrement = (2.0f * (float)M_PI * frequency) / (float)sampleRate;
     // Boost effective volume for loud output on MAX98357A
     float effectiveVol = volume * _volumeScale * 28000.0f;
 
-    _isPlaying = true;
-
-    for (size_t i = 0; i < totalSamples; i += CHUNK) {
+    for (size_t i = 0; i < totalSamples && _isPlaying; i += CHUNK) {
         size_t n = (i + CHUNK <= totalSamples) ? CHUNK : (totalSamples - i);
         double energyAcc = 0.0;
         for (size_t j = 0; j < n; j++) {
@@ -175,9 +214,9 @@ void SpeakerDriver::playTone(float frequency, uint32_t durationMs, float volume)
 
             int16_t val = (int16_t)(sinf(phase) * effectiveVol * env);
             phase += phaseIncrement;
-            if (phase > 2.0f * M_PI) phase -= 2.0f * M_PI;
+            if (phase > 2.0f * (float)M_PI) phase -= 2.0f * (float)M_PI;
 
-            buffer[j * 2] = val;
+            buffer[j * 2]     = val;
             buffer[j * 2 + 1] = val;
             energyAcc += (double)(val * val);
         }
@@ -191,8 +230,10 @@ void SpeakerDriver::playTone(float frequency, uint32_t durationMs, float volume)
         i2s_write(_i2sPort, (const void*)buffer, n * 2 * sizeof(int16_t), &bytesWritten, portMAX_DELAY);
     }
 
-    _isPlaying = false;
-    _currentMouthLevel = 0.0f;
+    if (!outerPlaying) {
+        _isPlaying = false;
+        _currentMouthLevel = 0.0f;
+    }
 }
 
 void SpeakerDriver::playStartupSound() {
@@ -241,29 +282,55 @@ void SpeakerDriver::speakMascotVoice(const String& text) {
         1046.50f // C6
     };
 
-    size_t charCount = text.length();
-    if (charCount > 100) charCount = 100;
+    size_t len = text.length();
+    size_t i = 0;
+    size_t spokenCount = 0;
+    const size_t MAX_SPOKEN_SYLLABLES = 60; // Max syllables to keep speech lively and responsive
 
-    for (size_t i = 0; i < charCount && _isPlaying; i++) {
-        char c = text[i];
-        if (c == ' ' || c == '\n' || c == '\t') {
-            vTaskDelay(pdMS_TO_TICKS(35));
+    while (i < len && _isPlaying && spokenCount < MAX_SPOKEN_SYLLABLES) {
+        uint8_t b = (uint8_t)text[i];
+
+        // Whitespace pause
+        if (b == ' ' || b == '\t' || b == '\n' || b == '\r') {
+            vTaskDelay(pdMS_TO_TICKS(40));
+            i++;
             continue;
         }
-        if (c == '.' || c == '!' || c == '?' || c == ',') {
-            vTaskDelay(pdMS_TO_TICKS(100));
+
+        // Punctuation pause
+        if (b == '.' || b == '!' || b == '?' || b == ',' || b == ';' || b == ':') {
+            vTaskDelay(pdMS_TO_TICKS(110));
+            i++;
             continue;
         }
 
-        uint8_t hash = (uint8_t)c;
-        float freq = voicePitches[hash % 8];
-        if (c >= 'A' && c <= 'Z') freq *= 1.15f;
+        // Handle UTF-8 character unit (English 1 byte, Bengali 3 bytes)
+        uint32_t charCode = b;
+        size_t charLen = 1;
+        if ((b & 0xE0) == 0xC0 && (i + 1 < len)) {
+            charLen = 2;
+            charCode = ((b & 0x1F) << 6) | (text[i + 1] & 0x3F);
+        } else if ((b & 0xF0) == 0xE0 && (i + 2 < len)) {
+            charLen = 3;
+            charCode = ((b & 0x0F) << 12) | ((text[i + 1] & 0x3F) << 6) | (text[i + 2] & 0x3F);
+        } else if ((b & 0xF8) == 0xF0 && (i + 3 < len)) {
+            charLen = 4;
+            charCode = ((b & 0x07) << 18) | ((text[i + 1] & 0x3F) << 12) | ((text[i + 2] & 0x3F) << 6) | (text[i + 3] & 0x3F);
+        }
 
-        // Play pleasant 65ms vocal syllable tone
-        playTone(freq, 65, 0.95f);
-        vTaskDelay(pdMS_TO_TICKS(10));
+        i += charLen;
+        spokenCount++;
+
+        // Determine pitch from charCode hash
+        float freq = voicePitches[charCode % 8];
+        if (b >= 'A' && b <= 'Z') freq *= 1.12f;
+
+        // Play pleasant 60ms vocal syllable tone
+        playTone(freq, 60, 0.95f);
+        vTaskDelay(pdMS_TO_TICKS(8));
     }
 
     _isPlaying = false;
     _currentMouthLevel = 0.0f;
+    i2s_zero_dma_buffer(_i2sPort);
 }

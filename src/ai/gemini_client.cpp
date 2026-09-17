@@ -466,64 +466,73 @@ bool GeminiClient::parseStructuredResponse(const String& responseJson, AIRespons
 
     outResponse->rawResponseText = innerText;
 
-    // Parse structured JSON payload
-    JsonDocument parsedDoc;
-    DeserializationError innerErr = deserializeJson(parsedDoc, innerText);
-    if (innerErr) {
+    // Robust JSON extraction: look for outer braces { ... }
+    int firstBrace = innerText.indexOf('{');
+    int lastBrace = innerText.lastIndexOf('}');
+    bool parsedSuccessfully = false;
+
+    if (firstBrace >= 0 && lastBrace > firstBrace) {
+        String jsonCandidate = innerText.substring(firstBrace, lastBrace + 1);
+        JsonDocument parsedDoc;
+        DeserializationError innerErr = deserializeJson(parsedDoc, jsonCandidate);
+        if (!innerErr) {
+            outResponse->speechText = parsedDoc["speech"] | "";
+            outResponse->languageCode = parsedDoc["lang"] | "bn";
+            parsedSuccessfully = true;
+
+            String emotionStr = parsedDoc["emotion"] | "idle";
+            if (emotionStr == "happy") outResponse->emotion = MascotEmotion::HAPPY;
+            else if (emotionStr == "sad") outResponse->emotion = MascotEmotion::SAD;
+            else if (emotionStr == "thinking") outResponse->emotion = MascotEmotion::THINKING;
+            else if (emotionStr == "confused") outResponse->emotion = MascotEmotion::CONFUSED;
+            else if (emotionStr == "excited") outResponse->emotion = MascotEmotion::EXCITED;
+            else if (emotionStr == "sleeping") outResponse->emotion = MascotEmotion::SLEEPING;
+            else outResponse->emotion = MascotEmotion::IDLE;
+
+            JsonObject disp = parsedDoc["display"];
+            if (!disp.isNull()) {
+                String modeStr = disp["mode"] | "mascot";
+                if (modeStr == "clock") outResponse->displayCmd.mode = DisplayMode::CLOCK_OVERLAY;
+                else if (modeStr == "weather") outResponse->displayCmd.mode = DisplayMode::WEATHER_OVERLAY;
+                else if (modeStr == "todo") outResponse->displayCmd.mode = DisplayMode::TODO_LIST;
+                else if (modeStr == "card") outResponse->displayCmd.mode = DisplayMode::CUSTOM_TEXT;
+                else outResponse->displayCmd.mode = DisplayMode::SPEECH_BUBBLE;
+
+                outResponse->displayCmd.title = disp["title"] | "";
+                outResponse->displayCmd.subtitle = disp["subtitle"] | "";
+                outResponse->displayCmd.speechText = outResponse->speechText;
+                outResponse->displayCmd.durationMs = 6000;
+                outResponse->displayCmd.isValid = true;
+
+                String themeStr = disp["theme"] | "midnight";
+                if (themeStr == "cyberpunk") outResponse->displayCmd.theme = UITheme::CYBERPUNK_DARK;
+                else if (themeStr == "pastel") outResponse->displayCmd.theme = UITheme::NEKO_PASTEL;
+                else if (themeStr == "green") outResponse->displayCmd.theme = UITheme::NATURE_GREEN;
+                else outResponse->displayCmd.theme = UITheme::MIDNIGHT_FOX;
+            }
+
+            JsonObject home = parsedDoc["smart_home"];
+            if (!home.isNull()) {
+                outResponse->homeCmd.action = home["action"] | "none";
+                outResponse->homeCmd.target = home["target"] | "";
+                outResponse->homeCmd.value = home["value"] | 0;
+                outResponse->homeCmd.metadata = home["meta"] | "";
+                outResponse->homeCmd.isValid = (outResponse->homeCmd.action != "none");
+            }
+        }
+    }
+
+    if (!parsedSuccessfully || outResponse->speechText.length() == 0) {
         log_w("Could not parse structured JSON from text. Using as plain speech.");
         outResponse->speechText = innerText;
         outResponse->languageCode = "bn";
         outResponse->emotion = MascotEmotion::HAPPY;
         outResponse->displayCmd.mode = DisplayMode::SPEECH_BUBBLE;
         outResponse->displayCmd.speechText = innerText;
-        outResponse->isSuccess = true;
-        return true;
-    }
-
-    outResponse->speechText = parsedDoc["speech"].as<String>();
-    outResponse->languageCode = parsedDoc["lang"] | "bn";
-
-    String emotionStr = parsedDoc["emotion"] | "idle";
-    if (emotionStr == "happy") outResponse->emotion = MascotEmotion::HAPPY;
-    else if (emotionStr == "sad") outResponse->emotion = MascotEmotion::SAD;
-    else if (emotionStr == "thinking") outResponse->emotion = MascotEmotion::THINKING;
-    else if (emotionStr == "confused") outResponse->emotion = MascotEmotion::CONFUSED;
-    else if (emotionStr == "excited") outResponse->emotion = MascotEmotion::EXCITED;
-    else if (emotionStr == "sleeping") outResponse->emotion = MascotEmotion::SLEEPING;
-    else outResponse->emotion = MascotEmotion::IDLE;
-
-    JsonObject disp = parsedDoc["display"];
-    if (!disp.isNull()) {
-        String modeStr = disp["mode"] | "mascot";
-        if (modeStr == "clock") outResponse->displayCmd.mode = DisplayMode::CLOCK_OVERLAY;
-        else if (modeStr == "weather") outResponse->displayCmd.mode = DisplayMode::WEATHER_OVERLAY;
-        else if (modeStr == "todo") outResponse->displayCmd.mode = DisplayMode::TODO_LIST;
-        else if (modeStr == "card") outResponse->displayCmd.mode = DisplayMode::CUSTOM_TEXT;
-        else outResponse->displayCmd.mode = DisplayMode::SPEECH_BUBBLE;
-
-        outResponse->displayCmd.title = disp["title"] | "";
-        outResponse->displayCmd.subtitle = disp["subtitle"] | "";
-        outResponse->displayCmd.speechText = outResponse->speechText;
-        outResponse->displayCmd.durationMs = 6000;
-        outResponse->displayCmd.isValid = true;
-
-        String themeStr = disp["theme"] | "midnight";
-        if (themeStr == "cyberpunk") outResponse->displayCmd.theme = UITheme::CYBERPUNK_DARK;
-        else if (themeStr == "pastel") outResponse->displayCmd.theme = UITheme::NEKO_PASTEL;
-        else if (themeStr == "green") outResponse->displayCmd.theme = UITheme::NATURE_GREEN;
-        else outResponse->displayCmd.theme = UITheme::MIDNIGHT_FOX;
-    }
-
-    JsonObject home = parsedDoc["smart_home"];
-    if (!home.isNull()) {
-        outResponse->homeCmd.action = home["action"] | "none";
-        outResponse->homeCmd.target = home["target"] | "";
-        outResponse->homeCmd.value = home["value"] | 0;
-        outResponse->homeCmd.metadata = home["meta"] | "";
-        outResponse->homeCmd.isValid = (outResponse->homeCmd.action != "none");
     }
 
     outResponse->isSuccess = true;
     log_i("Gemini reply received: [%s] '%s'", outResponse->languageCode.c_str(), outResponse->speechText.c_str());
     return true;
 }
+

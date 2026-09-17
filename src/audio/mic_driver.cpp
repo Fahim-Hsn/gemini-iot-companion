@@ -113,8 +113,9 @@ bool MicDriver::startRecording(uint8_t* outBuffer, size_t maxBytes, size_t* outW
     uint32_t startTime = millis();
     uint32_t silenceStart = 0;
     bool speechDetectedOnce = false;
-    const float VOICE_THRESHOLD = 300.0f;
-    const uint32_t SILENCE_TIMEOUT_MS = 1400; // 1.4 seconds of silence triggers end of sentence
+    const float VOICE_THRESHOLD = 350.0f; // slightly increased to prevent noise triggering
+    const uint32_t SILENCE_TIMEOUT_MS = 2000; // 2.0 seconds of silence triggers end of sentence
+    int chunksToIgnore = 3; // Skip first ~50ms of audio to avoid startup clicks
 
     log_i("Listening for voice speech...");
 
@@ -122,6 +123,11 @@ bool MicDriver::startRecording(uint8_t* outBuffer, size_t maxBytes, size_t* outW
         size_t samplesRead = readRaw(chunkBuffer, CHUNK_SAMPLES);
         if (samplesRead == 0) {
             vTaskDelay(pdMS_TO_TICKS(5));
+            continue;
+        }
+
+        if (chunksToIgnore > 0) {
+            chunksToIgnore--;
             continue;
         }
 

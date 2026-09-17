@@ -54,7 +54,12 @@
 #define TTS_VOICE_BANGLA        "bn-IN-Standard-A"  // Cute Bengali voice
 #define TTS_VOICE_ENGLISH       "en-IN-Standard-A"  // Cute English voice
 
+#ifndef VOICERSS_API_KEY
+#define VOICERSS_API_KEY        ""
+#endif
+
 #ifndef OPENWEATHER_API_KEY
+
 #define OPENWEATHER_API_KEY     "YOUR_OPENWEATHER_KEY"
 #endif
 #ifndef WEATHER_CITY
